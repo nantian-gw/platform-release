@@ -1,0 +1,49 @@
+name: publish-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_version:
+        description: Candidate release version to promote
+        required: true
+        type: string
+      final_version:
+        description: Final release version to publish
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: make setup
+      - name: Promote release
+        run: ./scripts/promote-release.sh "${{ inputs.candidate_version }}" "${{ inputs.final_version }}"
+      - name: Configure Git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Commit release artifacts
+        run: |
+          git add "releases/${{ inputs.final_version }}" "results/${{ inputs.final_version }}"
+          git commit -m "release: publish ${{ inputs.final_version }}"
+      - name: Tag release
+        run: git tag "${{ inputs.final_version }}"
+      - name: Push main
+        run: git push origin HEAD:main
+      - name: Push tag
+        run: git push origin "${{ inputs.final_version }}"
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ inputs.final_version }}" --title "${{ inputs.final_version }}" --notes-file "releases/${{ inputs.final_version }}/release-notes.md"
