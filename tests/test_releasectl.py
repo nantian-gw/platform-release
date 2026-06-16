@@ -233,6 +233,37 @@ def test_run_validation_marks_active_failure_and_skips_later_checks(tmp_path: Pa
     assert rendered_summary["artifacts"]["failure"] == "command failed with exit code 2"
 
 
+def test_run_validation_checkout_failure_does_not_claim_a_validation_check_failed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    registry, manifest, manifest_schema_path, summary, summary_schema_path = write_release_inputs(tmp_path)
+    workspace = tmp_path / ".work/v2026.06.0-rc1"
+
+    def fake_checkout_repo(repo: str, commit: str, target: Path) -> Path:
+        raise subprocess.CalledProcessError(128, ["git", "clone", repo, str(target)])
+
+    monkeypatch.setattr(releasectl, "checkout_repo", fake_checkout_repo)
+
+    with pytest.raises(subprocess.CalledProcessError):
+        releasectl.run_validation(
+            registry,
+            manifest,
+            manifest_schema_path,
+            summary,
+            summary_schema_path,
+            workspace,
+        )
+
+    rendered_summary = releasectl.load_yaml(summary)
+    assert rendered_summary["status"] == "failed"
+    assert rendered_summary["checks"]["gateway-build"]["status"] == "skipped-after-failure"
+    assert rendered_summary["checks"]["gateway-test"]["status"] == "skipped-after-failure"
+    assert rendered_summary["checks"]["dataplane-build"]["status"] == "skipped-after-failure"
+    assert rendered_summary["checks"]["install-validation"]["status"] == "skipped-after-failure"
+    assert rendered_summary["checks"]["gateway-api-conformance"]["status"] == "skipped-after-failure"
+    assert rendered_summary["artifacts"]["failure"] == "command failed with exit code 128"
+
+
 def test_run_validation_success_marks_component_and_platform_checks_passed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -119,8 +119,6 @@ def run_validation(
     try:
         for name, config in registry["components"].items():
             component_checks = config["validate"]
-            if component_checks:
-                active_check_id = component_checks[0]["id"]
             checkout = checkout_repo(config["repo"], manifest["components"][name]["commit"], workspace / name)
             for check in component_checks:
                 active_check_id = check["id"]
