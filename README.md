@@ -37,8 +37,9 @@ make setup
 make test
 ```
 
-To generate a candidate release tree after component tags and published
-artifacts exist:
+From the repository root, after component tags and published artifacts exist,
+you can generate a candidate release tree, run validation, and render the
+human-readable results:
 
 ```bash
 ./scripts/resolve-release.sh v2026.06.0-rc1

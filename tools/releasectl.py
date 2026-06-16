@@ -86,8 +86,13 @@ def run_command(command: str, cwd: Path) -> None:
 
 
 def checkout_repo(repo: str, commit: str, target: Path) -> Path:
-    if not target.exists():
-        subprocess.run(["git", "clone", "--no-checkout", repo, str(target)], check=True)
+    if target.exists():
+        if target.is_dir():
+            shutil.rmtree(target)
+        else:
+            target.unlink()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "clone", "--no-checkout", repo, str(target)], check=True)
     subprocess.run(["git", "fetch", "--depth", "1", "origin", commit], cwd=target, check=True)
     subprocess.run(["git", "checkout", "--detach", commit], cwd=target, check=True)
     return target
@@ -109,28 +114,37 @@ def run_validation(
         summary_schema_path,
     )
     workspace.mkdir(parents=True, exist_ok=True)
+    active_check_id: str | None = None
 
     try:
         for name, config in registry["components"].items():
+            component_checks = config["validate"]
+            if component_checks:
+                active_check_id = component_checks[0]["id"]
             checkout = checkout_repo(config["repo"], manifest["components"][name]["commit"], workspace / name)
-            for check in config["validate"]:
+            for check in component_checks:
+                active_check_id = check["id"]
                 run_command(check["run"], checkout)
                 summary["checks"][check["id"]]["status"] = "passed"
 
         for check in registry.get("platformChecks", []):
+            active_check_id = check["id"]
             repo_name = check["repo"]
             checkout = workspace / repo_name
             run_command(check["run"], checkout)
             summary["checks"][check["id"]]["status"] = "passed"
 
+        active_check_id = None
         summary["status"] = "passed"
         run_id = os.environ.get("GITHUB_RUN_ID")
         if run_id:
             summary["artifacts"]["githubRun"] = f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{run_id}"
     except subprocess.CalledProcessError as exc:
         summary["status"] = "failed"
+        if active_check_id is not None:
+            summary["checks"][active_check_id]["status"] = "failed"
         for check_name, state in summary["checks"].items():
-            if state["status"] == "pending":
+            if check_name != active_check_id and state["status"] == "pending":
                 summary["checks"][check_name]["status"] = "skipped-after-failure"
         summary["artifacts"]["failure"] = f"command failed with exit code {exc.returncode}"
         dump_yaml(summary_path, summary)

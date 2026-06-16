@@ -6,9 +6,11 @@ if [[ $# -ne 4 ]]; then
   exit 1
 fi
 
-python_bin="${PYTHON_BIN:-.venv/bin/python3}"
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd -- "${script_dir}/.." && pwd)"
+python_bin="${PYTHON_BIN:-${repo_root}/.venv/bin/python3}"
 
-"${python_bin}" tools/releasectl.py collect-results \
+"${python_bin}" "${repo_root}/tools/releasectl.py" collect-results \
   --summary "$1" \
   --matrix "$2" \
   --conformance "$3" \
