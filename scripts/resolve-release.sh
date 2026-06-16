@@ -8,9 +8,18 @@ fi
 
 platform_version="$1"
 version_pattern='^v[0-9]{4}\.[0-9]{2}\.[0-9]+(-rc[0-9]+)?$'
+python_bin="${PYTHON_BIN:-.venv/bin/python3}"
 
 if [[ ! "${platform_version}" =~ ${version_pattern} ]]; then
   echo "platform version must match ${version_pattern}" >&2
+  exit 1
+fi
+
+release_dir="releases/${platform_version}"
+results_dir="results/${platform_version}"
+
+if [[ -e "${release_dir}" || -e "${results_dir}" ]]; then
+  echo "release evidence already exists for ${platform_version}; refusing to overwrite ${release_dir} or ${results_dir}" >&2
   exit 1
 fi
 
@@ -74,8 +83,6 @@ dashboard_commit="$(resolve_commit "${dashboard_repo}" "${DASHBOARD_TAG}")"
 website_commit="$(resolve_commit "${website_repo}" "${WEBSITE_TAG}")"
 helm_charts_commit="$(resolve_commit "${helm_charts_repo}" "${HELM_CHARTS_TAG}")"
 
-release_dir="releases/${platform_version}"
-results_dir="results/${platform_version}"
 release_date="$(date -u +%F)"
 
 mkdir -p "${release_dir}" "${results_dir}"
@@ -137,47 +144,22 @@ EOF
 
 cat > "${release_dir}/compatibility.yaml" <<EOF
 platformVersion: ${platform_version}
-components:
-  gateway: ${GATEWAY_TAG}
-  dataplane: ${DATAPLANE_TAG}
-  proto: ${PROTO_TAG}
-  dashboard: ${DASHBOARD_TAG}
-  website: ${WEBSITE_TAG}
-  helm-charts: ${HELM_CHARTS_TAG}
-artifacts:
-  helmChartVersion: ${HELM_CHART_VERSION}
+compatibility:
+  gateway:
+    dataplane: ${DATAPLANE_TAG}
+    proto: ${PROTO_TAG}
+  helmChart:
+    chartVersion: ${HELM_CHART_VERSION}
 EOF
 
-cat > "${results_dir}/summary.yaml" <<EOF
-platformVersion: ${platform_version}
-status: pending
-checks:
-  gateway-build:
-    status: pending
-  gateway-test:
-    status: pending
-  dataplane-build:
-    status: pending
-  dataplane-test:
-    status: pending
-  dataplane-clippy:
-    status: pending
-  dataplane-fmt:
-    status: pending
-  proto-generate:
-    status: pending
-  dashboard-check:
-    status: pending
-  website-check:
-    status: pending
-  helm-lint:
-    status: pending
-  install-validation:
-    status: pending
-  gateway-api-conformance:
-    status: pending
-artifacts: {}
-EOF
+"${python_bin}" - <<PY
+from pathlib import Path
+from tools import releasectl
+
+registry = releasectl.load_yaml(Path("components/components.yaml"))
+summary = releasectl.build_initial_summary("${platform_version}", registry)
+releasectl.dump_yaml(Path("${results_dir}/summary.yaml"), summary)
+PY
 
 cat > "${results_dir}/conformance.md" <<EOF
 # ${platform_version} Conformance
