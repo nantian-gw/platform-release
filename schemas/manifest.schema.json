@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "platformVersion",
+    "baseRelease",
+    "status",
+    "releaseDate",
+    "components",
+    "artifacts"
+  ],
+  "properties": {
+    "platformVersion": {
+      "type": "string",
+      "pattern": "^v[0-9]{4}\\.[0-9]{2}\\.[0-9]+(-rc[0-9]+)?$"
+    },
+    "baseRelease": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^v[0-9]{4}\\.[0-9]{2}\\.[0-9]+$"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "candidate",
+        "released",
+        "retracted"
+      ]
+    },
+    "releaseDate": {
+      "type": "string",
+      "format": "date"
+    },
+    "components": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gateway",
+        "dataplane",
+        "proto",
+        "dashboard",
+        "website",
+        "helm-charts"
+      ],
+      "properties": {
+        "gateway": {
+          "$ref": "#/$defs/componentRelease"
+        },
+        "dataplane": {
+          "$ref": "#/$defs/componentRelease"
+        },
+        "proto": {
+          "$ref": "#/$defs/componentRelease"
+        },
+        "dashboard": {
+          "$ref": "#/$defs/componentRelease"
+        },
+        "website": {
+          "$ref": "#/$defs/componentRelease"
+        },
+        "helm-charts": {
+          "$ref": "#/$defs/componentRelease"
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "containerImages",
+        "helmChart"
+      ],
+      "properties": {
+        "containerImages": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "gateway",
+            "dataplane"
+          ],
+          "properties": {
+            "gateway": {
+              "type": "string",
+              "pattern": "^ghcr\\.io/nantian-gw/gateway@sha256:[a-f0-9]{64}$"
+            },
+            "dataplane": {
+              "type": "string",
+              "pattern": "^ghcr\\.io/nantian-gw/dataplane@sha256:[a-f0-9]{64}$"
+            }
+          }
+        },
+        "helmChart": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "version",
+            "repo"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "const": "nantian-gw"
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1
+            },
+            "repo": {
+              "type": "string",
+              "const": "https://chart.nantian.dev"
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "componentRelease": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repo",
+        "tag",
+        "commit"
+      ],
+      "properties": {
+        "repo": {
+          "type": "string",
+          "format": "uri"
+        },
+        "tag": {
+          "type": "string",
+          "minLength": 1
+        },
+        "commit": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}$"
+        }
+      }
+    }
+  }
+}

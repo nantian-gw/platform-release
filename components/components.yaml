@@ -1,0 +1,46 @@
+components:
+  gateway:
+    repo: https://github.com/nantian-gw/gateway
+    validate:
+      - id: gateway-build
+        run: make build
+      - id: gateway-test
+        run: make test
+  dataplane:
+    repo: https://github.com/nantian-gw/dataplane
+    validate:
+      - id: dataplane-build
+        run: cargo build --workspace
+      - id: dataplane-test
+        run: cargo test --workspace
+      - id: dataplane-clippy
+        run: cargo clippy --workspace -- -D warnings
+      - id: dataplane-fmt
+        run: cargo fmt --all -- --check
+  proto:
+    repo: https://github.com/nantian-gw/proto
+    validate:
+      - id: proto-generate
+        run: make generate
+  dashboard:
+    repo: https://github.com/nantian-gw/dashboard
+    validate:
+      - id: dashboard-check
+        run: npm install && npm run check
+  website:
+    repo: https://github.com/nantian-gw/website
+    validate:
+      - id: website-check
+        run: npm install && npm run check && npm run build
+  helm-charts:
+    repo: https://github.com/nantian-gw/helm-charts
+    validate:
+      - id: helm-lint
+        run: helm lint charts/nantian-gw
+platformChecks:
+  - id: install-validation
+    repo: gateway
+    run: make e2e-smoke
+  - id: gateway-api-conformance
+    repo: gateway
+    run: make conformance
