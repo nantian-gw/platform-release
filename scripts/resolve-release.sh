@@ -119,7 +119,7 @@ components:
     commit: ${helm_charts_commit}
 artifacts:
   containerImages:
-    gateway: ghcr.io/nantian-gw/gateway@${GATEWAY_IMAGE_DIGEST}
+    gateway: ghcr.io/nantian-gw/nantian-controlplane@${GATEWAY_IMAGE_DIGEST}
     dataplane: ghcr.io/nantian-gw/dataplane@${DATAPLANE_IMAGE_DIGEST}
   helmChart:
     name: nantian-gw

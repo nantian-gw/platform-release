@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 from pathlib import Path
 import subprocess
 
@@ -52,18 +53,18 @@ def manifest_payload(chart_repo: str = "https://chart.nantian.dev") -> dict:
         "components": {
             "gateway": {
                 "repo": "https://github.com/nantian-gw/gateway",
-                "tag": "gateway-v2026.06.0-rc1",
+                "tag": "v2026.06.0-rc1",
                 "commit": "6a4b1fc102643ef4419eead8305c93e2922c74a4",
             },
             "dataplane": {
                 "repo": "https://github.com/nantian-gw/dataplane",
-                "tag": "dataplane-v2026.06.0-rc1",
+                "tag": "v2026.06.0-rc1",
                 "commit": "e70d52c12097d3d3b161c8b6e2084ff7413167ef",
             },
         },
         "artifacts": {
             "containerImages": {
-                "gateway": "ghcr.io/nantian-gw/gateway@sha256:" + "a" * 64,
+                "gateway": "ghcr.io/nantian-gw/nantian-controlplane@sha256:" + "a" * 64,
                 "dataplane": "ghcr.io/nantian-gw/dataplane@sha256:" + "b" * 64,
             },
             "helmChart": {
@@ -385,3 +386,65 @@ def test_collect_results_wrapper_works_from_another_cwd(tmp_path: Path) -> None:
 
     assert "| gateway-build | passed |" in matrix_path.read_text(encoding="utf-8")
     assert "Gateway API conformance status: passed" in conformance_path.read_text(encoding="utf-8")
+
+
+def test_resolve_release_uses_controlplane_image_repo(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_git = fake_bin / "git"
+    fake_git.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "$1" == "ls-remote" && "$2" == "--tags" ]]; then
+  case "$3" in
+    https://github.com/nantian-gw/gateway) printf '%040d\trefs/tags/%s^{}\n' 1 "${4#refs/tags/}" ;;
+    https://github.com/nantian-gw/dataplane) printf '%040d\trefs/tags/%s^{}\n' 2 "${4#refs/tags/}" ;;
+    https://github.com/nantian-gw/proto) printf '%040d\trefs/tags/%s^{}\n' 3 "${4#refs/tags/}" ;;
+    https://github.com/nantian-gw/dashboard) printf '%040d\trefs/tags/%s^{}\n' 4 "${4#refs/tags/}" ;;
+    https://github.com/nantian-gw/website) printf '%040d\trefs/tags/%s^{}\n' 5 "${4#refs/tags/}" ;;
+    https://github.com/nantian-gw/helm-charts) printf '%040d\trefs/tags/%s^{}\n' 6 "${4#refs/tags/}" ;;
+    *) exit 1 ;;
+  esac
+  exit 0
+fi
+
+echo "unexpected git invocation: $*" >&2
+exit 1
+""",
+        encoding="utf-8",
+    )
+    fake_git.chmod(0o755)
+
+    generated_release = repo_root / "releases/v2026.06.0-rc1"
+    generated_results = repo_root / "results/v2026.06.0-rc1"
+
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    env["PYTHON_BIN"] = str(repo_root / ".venv/bin/python3")
+    env["GATEWAY_TAG"] = "v2026.06.0-rc1"
+    env["DATAPLANE_TAG"] = "v2026.06.0-rc1"
+    env["PROTO_TAG"] = "v2026.06.0-rc1"
+    env["DASHBOARD_TAG"] = "v2026.06.0-rc1"
+    env["WEBSITE_TAG"] = "v2026.06.0-rc1"
+    env["HELM_CHARTS_TAG"] = "v2026.06.0-rc1"
+    env["GATEWAY_IMAGE_DIGEST"] = "sha256:" + "a" * 64
+    env["DATAPLANE_IMAGE_DIGEST"] = "sha256:" + "b" * 64
+    env["HELM_CHART_VERSION"] = "0.2.3"
+
+    try:
+        subprocess.run(
+            [str(repo_root / "scripts/resolve-release.sh"), "v2026.06.0-rc1"],
+            cwd=repo_root,
+            env=env,
+            check=True,
+        )
+
+        manifest = generated_release / "manifest.yaml"
+        manifest_text = manifest.read_text(encoding="utf-8")
+        assert "ghcr.io/nantian-gw/nantian-controlplane@sha256:" in manifest_text
+        assert "ghcr.io/nantian-gw/gateway@sha256:" not in manifest_text
+    finally:
+        shutil.rmtree(generated_release, ignore_errors=True)
+        shutil.rmtree(generated_results, ignore_errors=True)

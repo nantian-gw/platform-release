@@ -85,7 +85,7 @@
           "properties": {
             "gateway": {
               "type": "string",
-              "pattern": "^ghcr\\.io/nantian-gw/gateway@sha256:[a-f0-9]{64}$"
+              "pattern": "^ghcr\\.io/nantian-gw/nantian-controlplane@sha256:[a-f0-9]{64}$"
             },
             "dataplane": {
               "type": "string",
