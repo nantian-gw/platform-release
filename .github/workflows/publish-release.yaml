@@ -17,33 +17,72 @@ permissions:
 
 jobs:
   publish:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          ref: refs/heads/main
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Install dependencies
         run: make setup
       - name: Promote release
-        run: ./scripts/promote-release.sh "${{ inputs.candidate_version }}" "${{ inputs.final_version }}"
+        shell: bash
+        run: |
+          final_release_dir="releases/${{ inputs.final_version }}"
+          final_results_dir="results/${{ inputs.final_version }}"
+
+          if [[ -d "${final_release_dir}" && -d "${final_results_dir}" ]]; then
+            echo "Final release artifacts already exist; skipping promotion."
+            exit 0
+          fi
+
+          ./scripts/promote-release.sh "${{ inputs.candidate_version }}" "${{ inputs.final_version }}"
       - name: Configure Git identity
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
       - name: Commit release artifacts
+        shell: bash
         run: |
           git add "releases/${{ inputs.final_version }}" "results/${{ inputs.final_version }}"
+          if git diff --cached --quiet; then
+            echo "No release artifact changes to commit."
+            exit 0
+          fi
+
           git commit -m "release: publish ${{ inputs.final_version }}"
       - name: Tag release
-        run: git tag "${{ inputs.final_version }}"
+        shell: bash
+        run: |
+          if git rev-parse -q --verify "refs/tags/${{ inputs.final_version }}" >/dev/null; then
+            echo "Tag already exists locally."
+            exit 0
+          fi
+
+          git tag "${{ inputs.final_version }}"
       - name: Push main
         run: git push origin HEAD:main
       - name: Push tag
-        run: git push origin "${{ inputs.final_version }}"
+        shell: bash
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/${{ inputs.final_version }}" >/dev/null 2>&1; then
+            echo "Tag already exists on origin."
+            exit 0
+          fi
+
+          git push origin "${{ inputs.final_version }}"
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ inputs.final_version }}" --title "${{ inputs.final_version }}" --notes-file "releases/${{ inputs.final_version }}/release-notes.md"
+        shell: bash
+        run: |
+          if gh release view "${{ inputs.final_version }}" >/dev/null 2>&1; then
+            echo "GitHub release already exists."
+            exit 0
+          fi
+
+          gh release create "${{ inputs.final_version }}" --title "${{ inputs.final_version }}" --notes-file "releases/${{ inputs.final_version }}/release-notes.md"
