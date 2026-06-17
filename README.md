@@ -30,6 +30,11 @@ scripts/     operator entrypoints
 tools/       Python helpers used by scripts and CI
 ```
 
+## Read More
+
+- [Repository Architecture](docs/architecture.md)
+- [Release Process](docs/release-process.md)
+
 ## Quickstart
 
 ```bash
