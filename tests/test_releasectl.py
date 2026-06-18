@@ -389,7 +389,12 @@ def test_collect_results_wrapper_works_from_another_cwd(tmp_path: Path) -> None:
 
 
 def test_resolve_release_uses_controlplane_image_repo(tmp_path: Path) -> None:
-    repo_root = Path(__file__).resolve().parents[1]
+    source_repo_root = Path(__file__).resolve().parents[1]
+    repo_root = tmp_path / "repo"
+    shutil.copytree(source_repo_root / "components", repo_root / "components")
+    shutil.copytree(source_repo_root / "scripts", repo_root / "scripts")
+    shutil.copytree(source_repo_root / "tools", repo_root / "tools")
+
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     fake_git = fake_bin / "git"
@@ -422,7 +427,7 @@ exit 1
 
     env = os.environ.copy()
     env["PATH"] = f"{fake_bin}:{env['PATH']}"
-    env["PYTHON_BIN"] = str(repo_root / ".venv/bin/python3")
+    env["PYTHON_BIN"] = str(source_repo_root / ".venv/bin/python3")
     env["GATEWAY_TAG"] = "v2026.06.0-rc1"
     env["DATAPLANE_TAG"] = "v2026.06.0-rc1"
     env["PROTO_TAG"] = "v2026.06.0-rc1"
@@ -448,3 +453,61 @@ exit 1
     finally:
         shutil.rmtree(generated_release, ignore_errors=True)
         shutil.rmtree(generated_results, ignore_errors=True)
+
+
+def test_resolve_release_writes_release_date_as_string(tmp_path: Path) -> None:
+    source_repo_root = Path(__file__).resolve().parents[1]
+    repo_root = tmp_path / "repo"
+    shutil.copytree(source_repo_root / "components", repo_root / "components")
+    shutil.copytree(source_repo_root / "scripts", repo_root / "scripts")
+    shutil.copytree(source_repo_root / "tools", repo_root / "tools")
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_git = fake_bin / "git"
+    fake_git.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "$1" == "ls-remote" && "$2" == "--tags" ]]; then
+  case "$3" in
+    https://github.com/nantian-gw/gateway) printf '%040d\trefs/tags/%s^{}\n' 1 "${4#refs/tags/}" ;;
+    https://github.com/nantian-gw/dataplane) printf '%040d\trefs/tags/%s^{}\n' 2 "${4#refs/tags/}" ;;
+    https://github.com/nantian-gw/proto) printf '%040d\trefs/tags/%s^{}\n' 3 "${4#refs/tags/}" ;;
+    https://github.com/nantian-gw/dashboard) printf '%040d\trefs/tags/%s^{}\n' 4 "${4#refs/tags/}" ;;
+    https://github.com/nantian-gw/website) printf '%040d\trefs/tags/%s^{}\n' 5 "${4#refs/tags/}" ;;
+    https://github.com/nantian-gw/helm-charts) printf '%040d\trefs/tags/%s^{}\n' 6 "${4#refs/tags/}" ;;
+    *) exit 1 ;;
+  esac
+  exit 0
+fi
+
+echo "unexpected git invocation: $*" >&2
+exit 1
+""",
+        encoding="utf-8",
+    )
+    fake_git.chmod(0o755)
+
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    env["PYTHON_BIN"] = str(source_repo_root / ".venv/bin/python3")
+    env["GATEWAY_TAG"] = "v2026.06.0-rc1"
+    env["DATAPLANE_TAG"] = "v2026.06.0-rc1"
+    env["PROTO_TAG"] = "v2026.06.0-rc1"
+    env["DASHBOARD_TAG"] = "v2026.06.0-rc1"
+    env["WEBSITE_TAG"] = "v2026.06.0-rc1"
+    env["HELM_CHARTS_TAG"] = "v2026.06.0-rc1"
+    env["GATEWAY_IMAGE_DIGEST"] = "sha256:" + "a" * 64
+    env["DATAPLANE_IMAGE_DIGEST"] = "sha256:" + "b" * 64
+    env["HELM_CHART_VERSION"] = "0.2.3"
+
+    subprocess.run(
+        [str(repo_root / "scripts/resolve-release.sh"), "v2026.06.0-rc1"],
+        cwd=repo_root,
+        env=env,
+        check=True,
+    )
+
+    manifest = releasectl.load_yaml(repo_root / "releases/v2026.06.0-rc1/manifest.yaml")
+    assert isinstance(manifest["releaseDate"], str)

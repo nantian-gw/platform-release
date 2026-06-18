@@ -91,7 +91,7 @@ cat > "${release_dir}/manifest.yaml" <<EOF
 platformVersion: ${platform_version}
 baseRelease: null
 status: candidate
-releaseDate: ${release_date}
+releaseDate: "${release_date}"
 components:
   gateway:
     repo: ${gateway_repo}

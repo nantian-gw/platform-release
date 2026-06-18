@@ -1,0 +1,29 @@
+platformVersion: v2026.06.0-rc2
+status: failed
+checks:
+  gateway-build:
+    status: passed
+  gateway-test:
+    status: passed
+  dataplane-build:
+    status: passed
+  dataplane-test:
+    status: passed
+  dataplane-clippy:
+    status: passed
+  dataplane-fmt:
+    status: passed
+  proto-generate:
+    status: passed
+  dashboard-check:
+    status: passed
+  website-check:
+    status: passed
+  helm-lint:
+    status: passed
+  install-validation:
+    status: failed
+  gateway-api-conformance:
+    status: skipped-after-failure
+artifacts:
+  failure: command failed with exit code 2

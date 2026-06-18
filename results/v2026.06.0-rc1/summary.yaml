@@ -1,0 +1,29 @@
+platformVersion: v2026.06.0-rc1
+status: failed
+checks:
+  gateway-build:
+    status: passed
+  gateway-test:
+    status: passed
+  dataplane-build:
+    status: passed
+  dataplane-test:
+    status: failed
+  dataplane-clippy:
+    status: skipped-after-failure
+  dataplane-fmt:
+    status: skipped-after-failure
+  proto-generate:
+    status: skipped-after-failure
+  dashboard-check:
+    status: skipped-after-failure
+  website-check:
+    status: skipped-after-failure
+  helm-lint:
+    status: skipped-after-failure
+  install-validation:
+    status: skipped-after-failure
+  gateway-api-conformance:
+    status: skipped-after-failure
+artifacts:
+  failure: command failed with exit code 101
