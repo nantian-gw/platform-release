@@ -270,17 +270,22 @@ def test_run_validation_success_marks_component_and_platform_checks_passed(
 ) -> None:
     registry, manifest, manifest_schema_path, summary, summary_schema_path = write_release_inputs(tmp_path)
     workspace = tmp_path / ".work/v2026.06.0-rc1"
-    commands: list[tuple[str, Path]] = []
+    commands: list[tuple[str, Path, dict[str, str] | None]] = []
+    prepared_aliases: list[tuple[str, str]] = []
 
     def fake_checkout_repo(repo: str, commit: str, target: Path) -> Path:
         target.mkdir(parents=True, exist_ok=True)
         return target
 
-    def fake_run_command(command: str, cwd: Path) -> None:
-        commands.append((command, cwd))
+    def fake_run_command(command: str, cwd: Path, env: dict[str, str] | None = None) -> None:
+        commands.append((command, cwd, env))
+
+    def fake_prepare_release_image_alias(source: str, alias: str) -> None:
+        prepared_aliases.append((source, alias))
 
     monkeypatch.setattr(releasectl, "checkout_repo", fake_checkout_repo)
     monkeypatch.setattr(releasectl, "run_command", fake_run_command)
+    monkeypatch.setattr(releasectl, "prepare_release_image_alias", fake_prepare_release_image_alias)
     monkeypatch.setenv("GITHUB_RUN_ID", "123456789")
     monkeypatch.setenv("GITHUB_SERVER_URL", "https://github.com")
     monkeypatch.setenv("GITHUB_REPOSITORY", "nantian-gw/platform-release")
@@ -304,12 +309,192 @@ def test_run_validation_success_marks_component_and_platform_checks_passed(
     assert rendered_summary["artifacts"]["githubRun"] == (
         "https://github.com/nantian-gw/platform-release/actions/runs/123456789"
     )
+    assert prepared_aliases == [
+        (
+            "ghcr.io/nantian-gw/nantian-controlplane@sha256:" + "a" * 64,
+            "nantian-gw-validation/controlplane:v2026.06.0-rc1",
+        ),
+        (
+            "ghcr.io/nantian-gw/dataplane@sha256:" + "b" * 64,
+            "nantian-gw-validation/dataplane:v2026.06.0-rc1",
+        ),
+    ]
+    expected_image_env = {
+        "CONTROL_PLANE_IMAGE": "nantian-gw-validation/controlplane:v2026.06.0-rc1",
+        "DATA_PLANE_IMAGE": "nantian-gw-validation/dataplane:v2026.06.0-rc1",
+    }
     assert commands == [
-        ("make build", workspace / "gateway"),
-        ("make test", workspace / "gateway"),
-        ("cargo build --workspace", workspace / "dataplane"),
-        ("make e2e-smoke", workspace / "gateway"),
-        ("make conformance", workspace / "gateway"),
+        ("make build", workspace / "gateway", None),
+        ("make test", workspace / "gateway", None),
+        ("cargo build --workspace", workspace / "dataplane", None),
+        (
+            "kustomize edit set image nantian-controlplane=nantian-gw-validation/controlplane:v2026.06.0-rc1",
+            workspace / "gateway" / "deploy/kubernetes/overlays/kind-conformance",
+            None,
+        ),
+        (
+            "kustomize edit set image nantian-dataplane=nantian-gw-validation/dataplane:v2026.06.0-rc1",
+            workspace / "gateway" / "deploy/kubernetes/overlays/kind-conformance",
+            None,
+        ),
+        ("make e2e-smoke", workspace / "gateway", expected_image_env),
+        ("make conformance", workspace / "gateway", expected_image_env),
+    ]
+
+
+def test_run_validation_clears_stale_failure_artifact_on_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    registry, manifest, manifest_schema_path, summary, summary_schema_path = write_release_inputs(
+        tmp_path,
+        summary_payload={
+            "platformVersion": "v2026.06.0-rc1",
+            "status": "failed",
+            "checks": {
+                "gateway-build": {"status": "passed"},
+                "gateway-test": {"status": "failed"},
+                "dataplane-build": {"status": "pending"},
+                "install-validation": {"status": "pending"},
+                "gateway-api-conformance": {"status": "pending"},
+            },
+            "artifacts": {"failure": "command failed with exit code 2"},
+        },
+    )
+    workspace = tmp_path / ".work/v2026.06.0-rc1"
+
+    def fake_checkout_repo(repo: str, commit: str, target: Path) -> Path:
+        target.mkdir(parents=True, exist_ok=True)
+        return target
+
+    def fake_run_command(command: str, cwd: Path, env: dict[str, str] | None = None) -> None:
+        return None
+
+    def fake_prepare_release_image_alias(source: str, alias: str) -> None:
+        return None
+
+    monkeypatch.setattr(releasectl, "checkout_repo", fake_checkout_repo)
+    monkeypatch.setattr(releasectl, "run_command", fake_run_command)
+    monkeypatch.setattr(releasectl, "prepare_release_image_alias", fake_prepare_release_image_alias)
+
+    releasectl.run_validation(
+        registry,
+        manifest,
+        manifest_schema_path,
+        summary,
+        summary_schema_path,
+        workspace,
+    )
+
+    rendered_summary = releasectl.load_yaml(summary)
+    assert rendered_summary["status"] == "passed"
+    assert rendered_summary["artifacts"].get("failure") is None
+
+
+def test_run_validation_platform_checks_use_manifest_image_artifacts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    registry, manifest, manifest_schema_path, summary, summary_schema_path = write_release_inputs(tmp_path)
+    workspace = tmp_path / ".work/v2026.06.0-rc1"
+    calls: list[tuple[str, Path, dict[str, str] | None]] = []
+    prepared_aliases: list[tuple[str, str]] = []
+
+    def fake_checkout_repo(repo: str, commit: str, target: Path) -> Path:
+        target.mkdir(parents=True, exist_ok=True)
+        return target
+
+    def fake_run_command(command: str, cwd: Path, env: dict[str, str] | None = None) -> None:
+        calls.append((command, cwd, env))
+
+    def fake_prepare_release_image_alias(source: str, alias: str) -> None:
+        prepared_aliases.append((source, alias))
+
+    monkeypatch.setattr(releasectl, "checkout_repo", fake_checkout_repo)
+    monkeypatch.setattr(releasectl, "run_command", fake_run_command)
+    monkeypatch.setattr(releasectl, "prepare_release_image_alias", fake_prepare_release_image_alias)
+
+    releasectl.run_validation(
+        registry,
+        manifest,
+        manifest_schema_path,
+        summary,
+        summary_schema_path,
+        workspace,
+    )
+
+    assert prepared_aliases == [
+        (
+            "ghcr.io/nantian-gw/nantian-controlplane@sha256:" + "a" * 64,
+            "nantian-gw-validation/controlplane:v2026.06.0-rc1",
+        ),
+        (
+            "ghcr.io/nantian-gw/dataplane@sha256:" + "b" * 64,
+            "nantian-gw-validation/dataplane:v2026.06.0-rc1",
+        ),
+    ]
+    expected_image_env = {
+        "CONTROL_PLANE_IMAGE": "nantian-gw-validation/controlplane:v2026.06.0-rc1",
+        "DATA_PLANE_IMAGE": "nantian-gw-validation/dataplane:v2026.06.0-rc1",
+    }
+    assert calls == [
+        ("make build", workspace / "gateway", None),
+        ("make test", workspace / "gateway", None),
+        ("cargo build --workspace", workspace / "dataplane", None),
+        (
+            "kustomize edit set image nantian-controlplane=nantian-gw-validation/controlplane:v2026.06.0-rc1",
+            workspace / "gateway" / "deploy/kubernetes/overlays/kind-conformance",
+            None,
+        ),
+        (
+            "kustomize edit set image nantian-dataplane=nantian-gw-validation/dataplane:v2026.06.0-rc1",
+            workspace / "gateway" / "deploy/kubernetes/overlays/kind-conformance",
+            None,
+        ),
+        ("make e2e-smoke", workspace / "gateway", expected_image_env),
+        ("make conformance", workspace / "gateway", expected_image_env),
+    ]
+
+
+def test_run_validation_prepares_gateway_smoke_overlay_from_manifest_images(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    registry, manifest, manifest_schema_path, summary, summary_schema_path = write_release_inputs(tmp_path)
+    workspace = tmp_path / ".work/v2026.06.0-rc1"
+    calls: list[tuple[str, Path, dict[str, str] | None]] = []
+
+    def fake_checkout_repo(repo: str, commit: str, target: Path) -> Path:
+        target.mkdir(parents=True, exist_ok=True)
+        return target
+
+    def fake_run_command(command: str, cwd: Path, env: dict[str, str] | None = None) -> None:
+        calls.append((command, cwd, env))
+
+    def fake_prepare_release_image_alias(source: str, alias: str) -> None:
+        return None
+
+    monkeypatch.setattr(releasectl, "checkout_repo", fake_checkout_repo)
+    monkeypatch.setattr(releasectl, "run_command", fake_run_command)
+    monkeypatch.setattr(releasectl, "prepare_release_image_alias", fake_prepare_release_image_alias)
+
+    releasectl.run_validation(
+        registry,
+        manifest,
+        manifest_schema_path,
+        summary,
+        summary_schema_path,
+        workspace,
+    )
+
+    assert calls[3:5] == [
+        (
+            "kustomize edit set image nantian-controlplane=nantian-gw-validation/controlplane:v2026.06.0-rc1",
+            workspace / "gateway" / "deploy/kubernetes/overlays/kind-conformance",
+            None,
+        ),
+        (
+            "kustomize edit set image nantian-dataplane=nantian-gw-validation/dataplane:v2026.06.0-rc1",
+            workspace / "gateway" / "deploy/kubernetes/overlays/kind-conformance",
+            None,
+        ),
     ]
 
 

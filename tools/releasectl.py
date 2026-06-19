@@ -81,8 +81,56 @@ def validate_release_files(
     return registry, manifest, summary
 
 
-def run_command(command: str, cwd: Path) -> None:
-    subprocess.run(command, cwd=cwd, shell=True, check=True)
+def run_command(command: str, cwd: Path, env: dict[str, str] | None = None) -> None:
+    subprocess.run(command, cwd=cwd, shell=True, check=True, env={**os.environ, **env} if env else None)
+
+
+def validation_image_alias(platform_version: str, component: str) -> str:
+    return f"nantian-gw-validation/{component}:{platform_version}"
+
+
+def release_image_aliases(manifest: dict) -> dict[str, tuple[str, str]]:
+    images = manifest.get("artifacts", {}).get("containerImages", {})
+    aliases: dict[str, tuple[str, str]] = {}
+    if gateway_image := images.get("gateway"):
+        aliases["CONTROL_PLANE_IMAGE"] = (
+            gateway_image,
+            validation_image_alias(manifest["platformVersion"], "controlplane"),
+        )
+    if dataplane_image := images.get("dataplane"):
+        aliases["DATA_PLANE_IMAGE"] = (
+            dataplane_image,
+            validation_image_alias(manifest["platformVersion"], "dataplane"),
+        )
+    return aliases
+
+
+def prepare_release_image_alias(source: str, alias: str) -> None:
+    print(f"Preparing release image alias: {source} -> {alias}", flush=True)
+    subprocess.run(["docker", "pull", "--platform", "linux/amd64", source], check=True)
+    subprocess.run(["docker", "tag", source, alias], check=True)
+
+
+def prepare_release_image_aliases(manifest: dict) -> None:
+    for source, alias in release_image_aliases(manifest).values():
+        prepare_release_image_alias(source, alias)
+
+
+def prepare_gateway_smoke_overlay(checkout: Path, manifest: dict) -> None:
+    overlay = checkout / "deploy/kubernetes/overlays/kind-conformance"
+    aliases = release_image_aliases(manifest)
+    if control_plane := aliases.get("CONTROL_PLANE_IMAGE"):
+        run_command(f"kustomize edit set image nantian-controlplane={control_plane[1]}", overlay)
+    if data_plane := aliases.get("DATA_PLANE_IMAGE"):
+        run_command(f"kustomize edit set image nantian-dataplane={data_plane[1]}", overlay)
+
+
+def platform_check_env(manifest: dict, repo_name: str) -> dict[str, str] | None:
+    if repo_name != "gateway":
+        return None
+
+    env = {name: alias for name, (_, alias) in release_image_aliases(manifest).items()}
+    return env or None
 
 
 def checkout_repo(repo: str, commit: str, target: Path) -> Path:
@@ -115,6 +163,16 @@ def run_validation(
     )
     workspace.mkdir(parents=True, exist_ok=True)
     active_check_id: str | None = None
+    release_image_aliases_prepared = False
+    gateway_smoke_overlay_prepared = False
+    summary["status"] = "pending"
+    summary["artifacts"] = {
+        key: value
+        for key, value in summary.get("artifacts", {}).items()
+        if key not in {"failure", "githubRun"}
+    }
+    for state in summary["checks"].values():
+        state["status"] = "pending"
 
     try:
         for name, config in registry["components"].items():
@@ -129,7 +187,14 @@ def run_validation(
             active_check_id = check["id"]
             repo_name = check["repo"]
             checkout = workspace / repo_name
-            run_command(check["run"], checkout)
+            env = platform_check_env(manifest, repo_name)
+            if env and not release_image_aliases_prepared:
+                prepare_release_image_aliases(manifest)
+                release_image_aliases_prepared = True
+            if env and repo_name == "gateway" and not gateway_smoke_overlay_prepared:
+                prepare_gateway_smoke_overlay(checkout, manifest)
+                gateway_smoke_overlay_prepared = True
+            run_command(check["run"], checkout, env=env)
             summary["checks"][check["id"]]["status"] = "passed"
 
         active_check_id = None

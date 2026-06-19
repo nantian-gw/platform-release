@@ -1,6 +1,6 @@
 # v2026.06.0-rc4 Test Matrix
 
-Overall status: `passed`
+Overall status: `failed`
 
 | Check | Status |
 | --- | --- |
@@ -14,5 +14,5 @@ Overall status: `passed`
 | dashboard-check | passed |
 | website-check | passed |
 | helm-lint | passed |
-| install-validation | passed |
-| gateway-api-conformance | passed |
+| install-validation | failed |
+| gateway-api-conformance | skipped-after-failure |

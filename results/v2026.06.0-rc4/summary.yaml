@@ -1,5 +1,5 @@
 platformVersion: v2026.06.0-rc4
-status: passed
+status: failed
 checks:
   gateway-build:
     status: passed
@@ -22,7 +22,8 @@ checks:
   helm-lint:
     status: passed
   install-validation:
-    status: passed
+    status: failed
   gateway-api-conformance:
-    status: passed
-artifacts: {}
+    status: skipped-after-failure
+artifacts:
+  failure: command failed with exit code 2
