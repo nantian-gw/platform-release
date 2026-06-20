@@ -250,8 +250,8 @@ jobs:
           echo "=== Services ==="
           kubectl get svc -n nantian-gw
 
-          # Find any service that is not the admin API
-          GW_SVC=$(kubectl get svc -n nantian-gw -o json | jq -r '.items[] | select(.metadata.name | test("admin") | not) | .metadata.name' | head -1)
+          # Find any service that listens on port 80 (Gateway proxy or dataplane NodePort)
+          GW_SVC=$(kubectl get svc -n nantian-gw -o json | jq -r '.items[] | select(.spec.ports[] | .port == 80) | .metadata.name' | head -1)
 
           if [[ -n "${GW_SVC}" && "${GW_SVC}" != "null" ]]; then
             echo "Port-forwarding ${GW_SVC}:80 -> localhost:8080"
