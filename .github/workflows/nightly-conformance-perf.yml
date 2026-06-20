@@ -250,11 +250,10 @@ jobs:
           echo "=== Services ==="
           kubectl get svc -n nantian-gw
 
-          # Use dataplane NodePort directly (nantian-gw-dataplane has 80:30080)
-          NODE_PORT=$(kubectl get svc nantian-gw-dataplane -n nantian-gw -o json | jq -r '.spec.ports[0].nodePort')
-          echo "Load testing via NodePort ${NODE_PORT}"
-          TARGET="http://localhost:${NODE_PORT}"
-          PF_PID=""
+          kubectl port-forward -n nantian-gw svc/nantian-gw-dataplane 8080:80 &
+          PF_PID=$!
+          sleep 3
+          TARGET="http://localhost:8080"
 
           HEY_OK=true
           hey -n 500 -c 10 -m GET "${TARGET}/" \
