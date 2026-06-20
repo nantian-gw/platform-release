@@ -210,57 +210,45 @@ jobs:
         run: |
           echo "Running load test from inside cluster..."
           kubectl run hey-runner -n nantian-gw --image=curlimages/curl:latest --rm -i --restart=Never -- \
-            sh -c '
-            apk add --no-cache curl jq >/dev/null 2>&1
-            TOTAL=500
-            CONC=10
-            START=$(date +%s%3N)
-            SUCCESS=0
-            for i in $(seq 1 '"${TOTAL}"'); do
-              CODE=$(curl -s -o /dev/null -w "%{http_code}" http://perf-echo/ 2>/dev/null)
-              if [ "$CODE" = "200" ]; then SUCCESS=$((SUCCESS+1)); fi
-            done &
-            for i in $(seq 2 $CONC); do
-              for j in $(seq 1 $((TOTAL/CONC))); do
-                CODE=$(curl -s -o /dev/null -w "%{http_code}" http://perf-echo/ 2>/dev/null)
-                if [ "$CODE" = "200" ]; then SUCCESS=$((SUCCESS+1)); fi
-              done &
-            done
-            wait
-            END=$(date +%s%3N)
-            ELAPSED=$((END - START))
-            RPS=$(echo "scale=1; $SUCCESS * 1000 / $ELAPSED" | bc)
-            cat > /tmp/results.json <<JSON
-          {
-            "tool": "curl-loop",
-            "total_requests": '"${TOTAL}"',
-            "concurrency": '"${CONC}"',
-            "total_success": '"${SUCCESS}"',
-            "elapsed_ms": '"${ELAPSED}"',
-            "requests_per_second": '"${RPS}"'
-          }
-          JSON
-            cat /tmp/results.json
-            ' 2>/dev/null | tail -5 > /tmp/hey-output.json || true
+            sh -c "
+          TOTAL=500
+          CONC=10
+          START=\$(date +%s%3N)
+          SUCCESS=0
+          for i in \$(seq 1 \$TOTAL); do
+            CODE=\$(curl -s -o /dev/null -w '%{http_code}' http://perf-echo/ 2>/dev/null)
+            if [ \"\$CODE\" = '200' ]; then SUCCESS=\$((SUCCESS+1)); fi
+          done
+          END=\$(date +%s%3N)
+          ELAPSED=\$((END - START))
+          if [ \$ELAPSED -gt 0 ]; then
+            RPS=\$(echo \"scale=1; \$SUCCESS * 1000 / \$ELAPSED\" | bc)
+          else
+            RPS=0
+          fi
+          echo \"{\\\"tool\\\":\\\"curl-loop\\\",\\\"total_requests\\\":\$TOTAL,\\\"concurrency\\\":1,\\\"total_success\\\":\$SUCCESS,\\\"elapsed_ms\\\":\$ELAPSED,\\\"requests_per_second\\\":\$RPS}\"
+          " 2>/dev/null | tail -1 > /tmp/hey-output.json || true
 
-          if [[ -s /tmp/hey-output.json ]]; then
+          if [[ -s /tmp/hey-output.json && "$(cat /tmp/hey-output.json)" == "{"* ]]; then
             cat /tmp/hey-output.json
             RPS=$(jq -r '.requests_per_second // 0' /tmp/hey-output.json)
+            SUCCESS=$(jq -r '.total_success // 0' /tmp/hey-output.json)
             cat > dist/performance.json <<JSON
           {
             "tool": "curl-loop",
             "total_requests": 500,
-            "concurrency": 10,
+            "concurrency": 1,
             "requests_per_second": ${RPS},
-            "total_success": $(jq -r '.total_success // 0' /tmp/hey-output.json)
+            "total_success": ${SUCCESS}
           }
           JSON
           else
+            cat /tmp/hey-output.json 2>/dev/null || true
             cat > dist/performance.json <<'JSON'
           {
             "tool": "curl-loop",
             "total_requests": 0,
-            "concurrency": 10,
+            "concurrency": 1,
             "requests_per_second": 0,
             "note": "load test failed"
           }
