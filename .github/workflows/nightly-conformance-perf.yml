@@ -212,13 +212,14 @@ jobs:
           kubectl run hey-runner -n nantian-gw --image=curlimages/curl:latest --rm --attach --restart=Never -- \
             sh -c 'TOTAL=1000; START=$(date +%s%3N); SUCCESS=0; for i in $(seq 1 $TOTAL); do CODE=$(curl -s -o /dev/null -w "%{http_code}" http://perf-echo/ 2>/dev/null); if [ "$CODE" = "200" ]; then SUCCESS=$((SUCCESS+1)); fi; done; END=$(date +%s%3N); ELAPSED=$((END-START)); if [ $ELAPSED -gt 0 ]; then RPS=$(echo "scale=1; $SUCCESS * 1000 / $ELAPSED" | bc); else RPS=0; fi; echo "{\"tool\":\"curl-loop\",\"total_requests\":$TOTAL,\"total_success\":$SUCCESS,\"elapsed_ms\":$ELAPSED,\"requests_per_second\":$RPS}"' \
             > /tmp/hey-output.json || true
+          grep '^{' /tmp/hey-output.json > /tmp/hey-clean.json 2>/dev/null || true
 
-          if [[ -s /tmp/hey-output.json ]]; then
+          if [[ -s /tmp/hey-clean.json ]]; then
             echo "=== raw output ==="
-            cat /tmp/hey-output.json
+            cat /tmp/hey-clean.json
             echo "=== end raw ==="
-            RPS=$(jq -r '.requests_per_second // 0' /tmp/hey-output.json 2>/dev/null || echo 0)
-            SUCCESS=$(jq -r '.total_success // 0' /tmp/hey-output.json)
+            RPS=$(jq -r '.requests_per_second // 0' /tmp/hey-clean.json 2>/dev/null || echo 0)
+            SUCCESS=$(jq -r '.total_success // 0' /tmp/hey-clean.json)
             cat > dist/performance.json <<JSON
           {
             "tool": "curl-loop",
