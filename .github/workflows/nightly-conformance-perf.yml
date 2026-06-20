@@ -181,28 +181,30 @@ jobs:
           echo "=== Available services ==="
           kubectl get svc -n nantian-gw
 
-          SVC=$(kubectl get svc -n nantian-gw -o json | jq -r '.items[0].metadata.name')
-          SVC_PORT=$(kubectl get svc -n nantian-gw -o json | jq -r '.items[0].spec.ports[0].port')
-          if [[ -z "${SVC}" || "${SVC}" == "null" || -z "${SVC_PORT}" || "${SVC_PORT}" == "null" ]]; then
-            echo "No services or ports found in nantian-gw namespace"
+          echo "=== Dataplane pods ==="
+          kubectl get pods -n nantian-gw -l app.kubernetes.io/name=nantian-gw-dataplane -o wide
+
+          POD=$(kubectl get pods -n nantian-gw -l app.kubernetes.io/name=nantian-gw-dataplane -o json | jq -r '.items[0].metadata.name')
+          if [[ -z "${POD}" || "${POD}" == "null" ]]; then
+            echo "No dataplane pod found, trying any pod..."
+            POD=$(kubectl get pods -n nantian-gw -o json | jq -r '.items[0].metadata.name')
+          fi
+
+          if [[ -z "${POD}" || "${POD}" == "null" ]]; then
+            echo "No pods found in nantian-gw namespace"
             cat > dist/performance.json <<'JSON'
           {
             "tool": "hey",
             "total_requests": 0,
-            "concurrency": 50,
-            "requests_per_second": 0,
-            "latency_p50_ms": 0,
-            "latency_p95_ms": 0,
-            "latency_p99_ms": 0,
-            "note": "no gateway service found"
+            "note": "no pods found"
           }
           JSON
             cat dist/performance.json
             exit 0
           fi
 
-          echo "Port-forwarding service ${SVC}:${SVC_PORT} -> localhost:8080"
-          kubectl port-forward -n nantian-gw "svc/${SVC}" 8080:"${SVC_PORT}" &
+          echo "Port-forwarding pod ${POD}:80 -> localhost:8080"
+          kubectl port-forward -n nantian-gw "pod/${POD}" 8080:80 &
           PF_PID=$!
           sleep 3
 
