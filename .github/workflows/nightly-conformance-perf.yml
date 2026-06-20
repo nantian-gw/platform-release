@@ -178,17 +178,38 @@ jobs:
           echo "=== Available services ==="
           kubectl get svc -n nantian-gw
 
-          PORT=$(kubectl get svc -n nantian-gw -o json | jq -r '.items[] | select(.spec.type=="NodePort") | .spec.ports[0].nodePort' | head -1)
-          if [[ -z "${PORT}" ]]; then
-            PORT=30080
+          SVC=$(kubectl get svc -n nantian-gw -o json | jq -r '.items[0].metadata.name')
+          if [[ -z "${SVC}" || "${SVC}" == "null" ]]; then
+            echo "No services found in nantian-gw namespace"
+            cat > dist/performance.json <<'JSON'
+          {
+            "tool": "hey",
+            "total_requests": 0,
+            "concurrency": 50,
+            "requests_per_second": 0,
+            "latency_p50_ms": 0,
+            "latency_p95_ms": 0,
+            "latency_p99_ms": 0,
+            "note": "no gateway service found"
+          }
+          JSON
+            cat dist/performance.json
+            exit 0
           fi
 
-          echo "Load testing on port ${PORT}..."
+          echo "Port-forwarding service ${SVC}:80 -> localhost:8080"
+          kubectl port-forward -n nantian-gw "svc/${SVC}" 8080:80 &
+          PF_PID=$!
+          sleep 3
+
           HEY_OK=true
           hey -n 10000 -c 50 -m GET \
             -H "Host: conformance.nantian.dev" \
-            "http://localhost:${PORT}/" \
+            "http://localhost:8080/" \
             -o json > /tmp/hey-output.json 2>/tmp/hey-stderr.txt || HEY_OK=false
+
+          kill "${PF_PID}" 2>/dev/null || true
+          wait "${PF_PID}" 2>/dev/null || true
 
           if [[ "${HEY_OK}" != "true" || ! -s /tmp/hey-output.json ]]; then
             echo "hey failed or produced no output"
@@ -202,7 +223,6 @@ jobs:
             "latency_p50_ms": 0,
             "latency_p95_ms": 0,
             "latency_p99_ms": 0,
-            "errors": 0,
             "note": "hey failed to produce results"
           }
           JSON
@@ -222,8 +242,7 @@ jobs:
             "requests_per_second": ${RPS},
             "latency_p50_ms": ${P50},
             "latency_p95_ms": ${P95},
-            "latency_p99_ms": ${P99},
-            "errors": 0
+            "latency_p99_ms": ${P99}
           }
           JSON
           fi
