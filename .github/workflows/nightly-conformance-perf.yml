@@ -254,8 +254,9 @@ jobs:
           kubectl wait --for=jsonpath='{.spec.ports[0].port}'=80 svc/nantian-gw-dataplane -n nantian-gw --timeout=60s || true
           kubectl get pods -n nantian-gw
           POD=$(kubectl get pods -n nantian-gw -o json | jq -r '.items[] | select(.metadata.name | startswith("nantian-gw-dataplane")) | .metadata.name' | head -1)
-          echo "Port-forwarding pod ${POD}:10080 -> localhost:8080"
-          kubectl port-forward -n nantian-gw "pod/${POD}" 8080:10080 &
+          echo "Port-forwarding pod ${POD}:19080 -> localhost:8080"
+
+          kubectl port-forward -n nantian-gw "pod/${POD}" 8080:19080 &
           PF_PID=$!
           sleep 5
 
