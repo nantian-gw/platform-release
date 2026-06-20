@@ -65,6 +65,9 @@ jobs:
 
       - name: Deploy Nantian Gateway
         working-directory: gateway
+        env:
+          KIND_DATAPLANE_IMAGE: ${{ env.DATAPLANE_IMAGE }}
+          KIND_DASHBOARD_IMAGE: ${{ env.DASHBOARD_IMAGE }}
         run: scripts/ci/deploy-kind-conformance.sh
 
       - name: Record image versions
@@ -155,6 +158,9 @@ jobs:
 
       - name: Deploy Nantian Gateway
         working-directory: gateway
+        env:
+          KIND_DATAPLANE_IMAGE: ${{ env.DATAPLANE_IMAGE }}
+          KIND_DASHBOARD_IMAGE: ${{ env.DASHBOARD_IMAGE }}
         run: scripts/ci/deploy-kind-conformance.sh
 
       - name: Install hey
