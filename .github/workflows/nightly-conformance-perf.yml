@@ -125,8 +125,6 @@ jobs:
     timeout-minutes: 45
     env:
       CLUSTER_NAME: nightly-perf
-    outputs:
-      summary_json: ${{ steps.perf.outputs.summary_json }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -175,65 +173,128 @@ jobs:
           kubectl wait --for=condition=available --timeout=120s deployment -n nantian-gw --all
           kubectl get pods -n nantian-gw
 
-      - name: Port-forward and load test
+      - name: Deploy test backend, Gateway, and HTTPRoute
+        run: |
+          kubectl apply -f - <<'YAML'
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: perf-backend
+            namespace: nantian-gw
+            labels:
+              app: perf-backend
+          spec:
+            containers:
+            - name: nginx
+              image: nginx:alpine
+              ports:
+              - containerPort: 80
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: perf-backend
+            namespace: nantian-gw
+          spec:
+            selector:
+              app: perf-backend
+            ports:
+            - port: 80
+              targetPort: 80
+          YAML
+
+          kubectl wait --for=condition=ready pod/perf-backend -n nantian-gw --timeout=60s
+
+          kubectl apply -f - <<'YAML'
+          apiVersion: gateway.networking.k8s.io/v1
+          kind: Gateway
+          metadata:
+            name: perf-gateway
+            namespace: nantian-gw
+          spec:
+            gatewayClassName: nantian-gw
+            listeners:
+            - name: http
+              port: 80
+              protocol: HTTP
+          ---
+          apiVersion: gateway.networking.k8s.io/v1
+          kind: HTTPRoute
+          metadata:
+            name: perf-route
+            namespace: nantian-gw
+          spec:
+            parentRefs:
+            - name: perf-gateway
+            rules:
+            - backendRefs:
+              - name: perf-backend
+                port: 80
+          YAML
+
+          echo "Waiting for Gateway to be programmed..."
+          for i in $(seq 1 30); do
+            STATUS=$(kubectl get gateway perf-gateway -n nantian-gw -o json | jq -r '.status.conditions[]? | select(.type=="Programmed") | .status // ""')
+            if [[ "${STATUS}" == "True" ]]; then
+              echo "Gateway programmed!"
+              break
+            fi
+            echo "  attempt $i: status=${STATUS:-pending}"
+            sleep 2
+          done
+          kubectl get gateway perf-gateway -n nantian-gw -o yaml
+
+      - name: Load test
         id: perf
         run: |
-          echo "=== Available services ==="
+          echo "=== Services ==="
           kubectl get svc -n nantian-gw
 
-          echo "=== Dataplane pods ==="
-          kubectl get pods -n nantian-gw -l app.kubernetes.io/name=nantian-gw-dataplane -o wide
+          GW_SVC=$(kubectl get svc -n nantian-gw -o json | jq -r '.items[] | select(.metadata.name | startswith("perf-gateway")) | .metadata.name' | head -1)
 
-          POD=$(kubectl get pods -n nantian-gw -l app.kubernetes.io/name=nantian-gw-dataplane -o json | jq -r '.items[0].metadata.name')
-          if [[ -z "${POD}" || "${POD}" == "null" ]]; then
-            echo "No dataplane pod found, trying any pod..."
-            POD=$(kubectl get pods -n nantian-gw -o json | jq -r '.items[0].metadata.name')
+          if [[ -n "${GW_SVC}" && "${GW_SVC}" != "null" ]]; then
+            echo "Port-forwarding ${GW_SVC}:80 -> localhost:8080"
+            kubectl port-forward -n nantian-gw "svc/${GW_SVC}" 8080:80 &
+            PF_PID=$!
+            sleep 3
+            TARGET="http://localhost:8080"
+          else
+            NODE_PORT=$(kubectl get svc -n nantian-gw -o json | jq -r '.items[] | select(.spec.type=="NodePort") | .spec.ports[0].nodePort' | head -1)
+            if [[ -n "${NODE_PORT}" && "${NODE_PORT}" != "null" ]]; then
+              TARGET="http://localhost:${NODE_PORT}"
+              echo "Using NodePort ${NODE_PORT}"
+            else
+              echo "No gateway service or NodePort found"
+              TARGET="http://localhost:8080"
+              kubectl port-forward -n nantian-gw deploy/nantian-gw-dataplane 8080:10080 &
+              PF_PID=$!
+              sleep 3
+            fi
           fi
-
-          if [[ -z "${POD}" || "${POD}" == "null" ]]; then
-            echo "No pods found in nantian-gw namespace"
-            cat > dist/performance.json <<'JSON'
-          {
-            "tool": "hey",
-            "total_requests": 0,
-            "note": "no pods found"
-          }
-          JSON
-            cat dist/performance.json
-            exit 0
-          fi
-
-          echo "Port-forwarding pod ${POD}:19080 -> localhost:8080"
-          kubectl port-forward -n nantian-gw "pod/${POD}" 8080:19080 &
-          PF_PID=$!
-          sleep 3
 
           HEY_OK=true
-          hey -n 500 -c 10 -m GET \
-            "http://localhost:8080/health" \
+          hey -n 500 -c 10 -m GET "${TARGET}/" \
             -o json > /tmp/hey-output.json 2>/tmp/hey-stderr.txt || HEY_OK=false
 
-          kill "${PF_PID}" 2>/dev/null || true
-          wait "${PF_PID}" 2>/dev/null || true
+          kill "${PF_PID:-0}" 2>/dev/null || true
+          wait "${PF_PID:-0}" 2>/dev/null || true
 
           if [[ "${HEY_OK}" != "true" || ! -s /tmp/hey-output.json ]]; then
-            echo "hey failed or produced no output"
+            echo "hey failed"
             cat /tmp/hey-stderr.txt 2>/dev/null || true
             cat > dist/performance.json <<'JSON'
           {
             "tool": "hey",
             "total_requests": 0,
-            "concurrency": 50,
+            "concurrency": 10,
             "requests_per_second": 0,
             "latency_p50_ms": 0,
             "latency_p95_ms": 0,
             "latency_p99_ms": 0,
-            "note": "hey failed to produce results"
+            "note": "hey failed"
           }
           JSON
           else
-            cat /tmp/hey-output.json | head -5
-
             RPS=$(jq -r '.requestsPerSec // 0' /tmp/hey-output.json)
             P50=$(jq -r '.latencyDistribution | map(select(.percentage >= 50)) | .[0].latency // 0' /tmp/hey-output.json)
             P95=$(jq -r '.latencyDistribution | map(select(.percentage >= 95)) | .[0].latency // 0' /tmp/hey-output.json)
@@ -286,17 +347,13 @@ jobs:
           RESULTS_DIR="results/nightly/${DATE}"
           mkdir -p "${RESULTS_DIR}"
 
-          # Copy conformance report
           if [[ -f artifacts/conformance-results/report.yaml ]]; then
             cp artifacts/conformance-results/report.yaml "${RESULTS_DIR}/conformance-report.yaml"
           fi
-
-          # Copy performance report
           if [[ -f artifacts/performance-results/performance.json ]]; then
             cp artifacts/performance-results/performance.json "${RESULTS_DIR}/performance.json"
           fi
 
-          # Generate summary
           CONFORMANCE="no data"
           if [[ -f artifacts/conformance-results/run.log ]]; then
             PASSED=$(grep -c "PASS" artifacts/conformance-results/run.log || echo "0")
@@ -306,8 +363,8 @@ jobs:
 
           PERF="no data"
           if [[ -f "${RESULTS_DIR}/performance.json" ]]; then
-            RPS=$(jq -r '.requests_per_second' "${RESULTS_DIR}/performance.json")
-            P95=$(jq -r '.latency_p95_ms' "${RESULTS_DIR}/performance.json")
+            RPS=$(jq -r '.requests_per_second // "N/A"' "${RESULTS_DIR}/performance.json")
+            P95=$(jq -r '.latency_p95_ms // "N/A"' "${RESULTS_DIR}/performance.json")
             PERF="RPS: ${RPS}, P95: ${P95}ms"
           fi
 
@@ -330,13 +387,11 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-
           git add results/nightly/
           if git diff --staged --quiet; then
             echo "No changes to commit."
             exit 0
           fi
-
           DATE=$(date -u +%Y-%m-%d)
           git commit -m "chore(results): record nightly conformance + performance for ${DATE}"
           git push
