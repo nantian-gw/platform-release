@@ -173,16 +173,16 @@ jobs:
           kubectl wait --for=condition=available --timeout=120s deployment -n nantian-gw --all
           kubectl get pods -n nantian-gw
 
-      - name: Deploy test backend, Gateway, and HTTPRoute
+      - name: Deploy echo server and NodePort
         run: |
           kubectl apply -f - <<'YAML'
           apiVersion: v1
           kind: Pod
           metadata:
-            name: perf-backend
+            name: perf-echo
             namespace: nantian-gw
             labels:
-              app: perf-backend
+              app: perf-echo
           spec:
             containers:
             - name: nginx
@@ -193,86 +193,28 @@ jobs:
           apiVersion: v1
           kind: Service
           metadata:
-            name: perf-backend
+            name: perf-echo
             namespace: nantian-gw
           spec:
+            type: NodePort
             selector:
-              app: perf-backend
+              app: perf-echo
             ports:
             - port: 80
               targetPort: 80
           YAML
 
-          kubectl wait --for=condition=ready pod/perf-backend -n nantian-gw --timeout=60s
-
-          kubectl apply -f - <<'YAML'
-          apiVersion: gateway.networking.k8s.io/v1
-          kind: Gateway
-          metadata:
-            name: perf-gateway
-            namespace: nantian-gw
-          spec:
-            gatewayClassName: nantian-gw
-            listeners:
-            - name: http
-              port: 80
-              protocol: HTTP
-          ---
-          apiVersion: gateway.networking.k8s.io/v1
-          kind: HTTPRoute
-          metadata:
-            name: perf-route
-            namespace: nantian-gw
-          spec:
-            parentRefs:
-            - name: perf-gateway
-            rules:
-            - backendRefs:
-              - name: perf-backend
-                port: 80
-          YAML
-
-          echo "Waiting for Gateway to be programmed..."
-          for i in $(seq 1 30); do
-            STATUS=$(kubectl get gateway perf-gateway -n nantian-gw -o json | jq -r '.status.conditions[]? | select(.type=="Programmed") | .status // ""')
-            if [[ "${STATUS}" == "True" ]]; then
-              echo "Gateway programmed!"
-              break
-            fi
-            echo "  attempt $i: status=${STATUS:-pending}"
-            sleep 2
-          done
-          kubectl get gateway perf-gateway -n nantian-gw -o yaml
+          kubectl wait --for=condition=ready pod/perf-echo -n nantian-gw --timeout=60s
 
       - name: Load test
         id: perf
         run: |
-          echo "=== Services ==="
-          kubectl get svc -n nantian-gw
-
-          # Wait for proxy service endpoints to be ready
-          kubectl wait --for=jsonpath='{.spec.ports[0].port}'=80 svc/nantian-gw-dataplane -n nantian-gw --timeout=60s || true
-          kubectl get pods -n nantian-gw
-          POD=$(kubectl get pods -n nantian-gw -o json | jq -r '.items[] | select(.metadata.name | startswith("nantian-gw-dataplane")) | .metadata.name' | head -1)
-          echo "Port-forwarding pod ${POD}:19080 -> localhost:8080"
-
-          kubectl port-forward -n nantian-gw "pod/${POD}" 8080:19080 &
-          PF_PID=$!
-          sleep 5
-
-          echo "Testing connectivity..."
-          curl -v --max-time 5 -H "Authorization: Bearer kind-conformance-dataplane-admin-token" http://localhost:8080/ 2>&1 | head -20 || true
-          echo "---"
-          TARGET="http://localhost:8080"
-          AUTH="Authorization: Bearer kind-conformance-dataplane-admin-token"
+          NODE_PORT=$(kubectl get svc perf-echo -n nantian-gw -o jsonpath='{.spec.ports[0].nodePort}')
+          echo "Load testing on NodePort ${NODE_PORT}"
 
           HEY_OK=true
-          hey -n 500 -c 10 -m GET \
-            -H "${AUTH}" \
-            "${TARGET}/" \
+          hey -n 500 -c 10 -m GET "http://localhost:${NODE_PORT}/" \
             -o json > /tmp/hey-output.json 2>/tmp/hey-stderr.txt || HEY_OK=false
-
-          kill "${PF_PID:-0}" 2>/dev/null || true
 
           if [[ "${HEY_OK}" != "true" || ! -s /tmp/hey-output.json ]]; then
             echo "hey failed"
