@@ -17,6 +17,8 @@ components:
         run: cargo clippy --workspace -- -D warnings
       - id: dataplane-fmt
         run: cargo fmt --all -- --check
+      - id: dataplane-build-release
+        run: cargo build --release --workspace -p ntgw-app --features allocator-jemalloc
   proto:
     repo: https://github.com/nantian-gw/proto
     validate:
