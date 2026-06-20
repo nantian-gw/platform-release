@@ -261,7 +261,7 @@ jobs:
           sleep 5
 
           echo "Testing connectivity..."
-          curl -v --max-time 5 -H "Authorization: Bearer kind-conformance-dataplane-admin-token" http://localhost:8080/health 2>&1 | head -20 || true
+          curl -v --max-time 5 -H "Authorization: Bearer kind-conformance-dataplane-admin-token" http://localhost:8080/ 2>&1 | head -20 || true
           echo "---"
           TARGET="http://localhost:8080"
           AUTH="Authorization: Bearer kind-conformance-dataplane-admin-token"
@@ -269,7 +269,7 @@ jobs:
           HEY_OK=true
           hey -n 500 -c 10 -m GET \
             -H "${AUTH}" \
-            "${TARGET}/health" \
+            "${TARGET}/" \
             -o json > /tmp/hey-output.json 2>/tmp/hey-stderr.txt || HEY_OK=false
 
           kill "${PF_PID:-0}" 2>/dev/null || true
