@@ -210,24 +210,8 @@ jobs:
         run: |
           echo "Running load test from inside cluster..."
           kubectl run hey-runner -n nantian-gw --image=curlimages/curl:latest --rm --attach --restart=Never -- \
-            sh -c "
-TOTAL=1000
-CONC=10
-          START=\$(date +%s%3N)
-          SUCCESS=0
-          for i in \$(seq 1 \$TOTAL); do
-            CODE=\$(curl -s -o /dev/null -w '%{http_code}' http://perf-echo/ 2>/dev/null)
-            if [ \"\$CODE\" = '200' ]; then SUCCESS=\$((SUCCESS+1)); fi
-          done
-          END=\$(date +%s%3N)
-          ELAPSED=\$((END - START))
-          if [ \$ELAPSED -gt 0 ]; then
-            RPS=\$(echo \"scale=1; \$SUCCESS * 1000 / \$ELAPSED\" | bc)
-          else
-            RPS=0
-          fi
-          echo \"{\\\"tool\\\":\\\"curl-loop\\\",\\\"total_requests\\\":\$TOTAL,\\\"concurrency\\\":1,\\\"total_success\\\":\$SUCCESS,\\\"elapsed_ms\\\":\$ELAPSED,\\\"requests_per_second\\\":\$RPS}\"
-          " > /tmp/hey-output.json || true
+            sh -c 'TOTAL=1000; START=$(date +%s%3N); SUCCESS=0; for i in $(seq 1 $TOTAL); do CODE=$(curl -s -o /dev/null -w "%{http_code}" http://perf-echo/ 2>/dev/null); if [ "$CODE" = "200" ]; then SUCCESS=$((SUCCESS+1)); fi; done; END=$(date +%s%3N); ELAPSED=$((END-START)); if [ $ELAPSED -gt 0 ]; then RPS=$(echo "scale=1; '$SUCCESS' * 1000 / '$ELAPSED'" | bc); else RPS=0; fi; echo "{\"tool\":\"curl-loop\",\"total_requests\":'$TOTAL',\"total_success\":'$SUCCESS',\"elapsed_ms\":'$ELAPSED',\"requests_per_second\":'$RPS'}"' \
+            > /tmp/hey-output.json || true
 
           if [[ -s /tmp/hey-output.json ]]; then
             echo "=== raw output ==="
