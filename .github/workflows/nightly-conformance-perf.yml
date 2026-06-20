@@ -250,6 +250,10 @@ jobs:
           echo "=== Services ==="
           kubectl get svc -n nantian-gw
 
+          # Wait for proxy service endpoints to be ready
+          kubectl wait --for=jsonpath='{.spec.ports[0].port}'=80 svc/nantian-gw-dataplane -n nantian-gw --timeout=60s || true
+          sleep 5
+
           kubectl port-forward -n nantian-gw svc/nantian-gw-dataplane 8080:80 &
           PF_PID=$!
           sleep 3
