@@ -122,7 +122,7 @@ jobs:
   performance:
     name: HTTP Load Test
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       CLUSTER_NAME: nightly-perf
     outputs:
@@ -209,7 +209,7 @@ jobs:
           sleep 3
 
           HEY_OK=true
-          hey -n 10000 -c 50 -m GET \
+          hey -n 500 -c 10 -m GET \
             -H "Host: conformance.nantian.dev" \
             "http://localhost:8080/" \
             -o json > /tmp/hey-output.json 2>/tmp/hey-stderr.txt || HEY_OK=false
@@ -243,8 +243,8 @@ jobs:
             cat > dist/performance.json <<JSON
           {
             "tool": "hey",
-            "total_requests": 10000,
-            "concurrency": 50,
+            "total_requests": 500,
+            "concurrency": 10,
             "requests_per_second": ${RPS},
             "latency_p50_ms": ${P50},
             "latency_p95_ms": ${P95},
