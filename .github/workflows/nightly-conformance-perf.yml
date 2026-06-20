@@ -122,7 +122,7 @@ jobs:
   performance:
     name: HTTP Load Test
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       CLUSTER_NAME: nightly-perf
     steps:
@@ -209,10 +209,10 @@ jobs:
         id: perf
         run: |
           echo "Running load test from inside cluster..."
-          kubectl run hey-runner -n nantian-gw --image=curlimages/curl:latest --rm -i --restart=Never -- \
+          kubectl run hey-runner -n nantian-gw --image=curlimages/curl:latest --rm --attach --restart=Never -- \
             sh -c "
-          TOTAL=500
-          CONC=10
+TOTAL=1000
+CONC=10
           START=\$(date +%s%3N)
           SUCCESS=0
           for i in \$(seq 1 \$TOTAL); do
@@ -227,7 +227,7 @@ jobs:
             RPS=0
           fi
           echo \"{\\\"tool\\\":\\\"curl-loop\\\",\\\"total_requests\\\":\$TOTAL,\\\"concurrency\\\":1,\\\"total_success\\\":\$SUCCESS,\\\"elapsed_ms\\\":\$ELAPSED,\\\"requests_per_second\\\":\$RPS}\"
-          " 2>/dev/null > /tmp/hey-output.json || true
+          " > /tmp/hey-output.json || true
 
           if [[ -s /tmp/hey-output.json ]]; then
             echo "=== raw output ==="
@@ -238,7 +238,7 @@ jobs:
             cat > dist/performance.json <<JSON
           {
             "tool": "curl-loop",
-            "total_requests": 500,
+            "total_requests": 1000,
             "concurrency": 1,
             "requests_per_second": ${RPS},
             "total_success": ${SUCCESS}
