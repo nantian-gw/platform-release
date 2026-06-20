@@ -152,11 +152,13 @@ jobs:
         run: |
           docker pull "${CONTROLPLANE_IMAGE}"
           docker pull "${DATAPLANE_IMAGE}"
+          docker pull curlimages/curl:latest
 
       - name: Load images into kind
         run: |
           kind load docker-image "${CONTROLPLANE_IMAGE}" --name "${CLUSTER_NAME}"
           kind load docker-image "${DATAPLANE_IMAGE}" --name "${CLUSTER_NAME}"
+          kind load docker-image curlimages/curl:latest --name "${CLUSTER_NAME}"
 
       - name: Deploy Nantian Gateway
         working-directory: gateway
@@ -207,7 +209,7 @@ jobs:
         id: perf
         run: |
           echo "Running load test from inside cluster..."
-          kubectl run hey-runner -n nantian-gw --image=alpine/curl:latest --rm -i --restart=Never -- \
+          kubectl run hey-runner -n nantian-gw --image=curlimages/curl:latest --rm -i --restart=Never -- \
             sh -c '
             apk add --no-cache curl jq >/dev/null 2>&1
             TOTAL=500
