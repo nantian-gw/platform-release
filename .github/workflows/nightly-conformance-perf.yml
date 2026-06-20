@@ -250,35 +250,17 @@ jobs:
           echo "=== Services ==="
           kubectl get svc -n nantian-gw
 
-          # Find any service that listens on port 80 (Gateway proxy or dataplane NodePort)
-          GW_SVC=$(kubectl get svc -n nantian-gw -o json | jq -r '.items[] | select(.spec.ports[] | .port == 80) | .metadata.name' | head -1)
-
-          if [[ -n "${GW_SVC}" && "${GW_SVC}" != "null" ]]; then
-            echo "Port-forwarding ${GW_SVC}:80 -> localhost:8080"
-            kubectl port-forward -n nantian-gw "svc/${GW_SVC}" 8080:80 &
-            PF_PID=$!
-            sleep 3
-            TARGET="http://localhost:8080"
-          else
-            NODE_PORT=$(kubectl get svc -n nantian-gw -o json | jq -r '.items[] | select(.spec.type=="NodePort") | .spec.ports[0].nodePort' | head -1)
-            if [[ -n "${NODE_PORT}" && "${NODE_PORT}" != "null" ]]; then
-              TARGET="http://localhost:${NODE_PORT}"
-              echo "Using NodePort ${NODE_PORT}"
-            else
-              echo "No gateway service or NodePort found"
-              TARGET="http://localhost:8080"
-              kubectl port-forward -n nantian-gw deploy/nantian-gw-dataplane 8080:10080 &
-              PF_PID=$!
-              sleep 3
-            fi
-          fi
+          # Use dataplane NodePort directly (nantian-gw-dataplane has 80:30080)
+          NODE_PORT=$(kubectl get svc nantian-gw-dataplane -n nantian-gw -o json | jq -r '.spec.ports[0].nodePort')
+          echo "Load testing via NodePort ${NODE_PORT}"
+          TARGET="http://localhost:${NODE_PORT}"
+          PF_PID=""
 
           HEY_OK=true
           hey -n 500 -c 10 -m GET "${TARGET}/" \
             -o json > /tmp/hey-output.json 2>/tmp/hey-stderr.txt || HEY_OK=false
 
           kill "${PF_PID:-0}" 2>/dev/null || true
-          wait "${PF_PID:-0}" 2>/dev/null || true
 
           if [[ "${HEY_OK}" != "true" || ! -s /tmp/hey-output.json ]]; then
             echo "hey failed"
