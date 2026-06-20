@@ -252,7 +252,9 @@ jobs:
 
           # Wait for proxy service endpoints to be ready
           kubectl wait --for=jsonpath='{.spec.ports[0].port}'=80 svc/nantian-gw-dataplane -n nantian-gw --timeout=60s || true
-          kubectl port-forward -n nantian-gw svc/nantian-gw-dataplane 8080:80 &
+          POD=$(kubectl get pods -n nantian-gw -l app.kubernetes.io/name=nantian-gw-dataplane -o jsonpath='{.items[0].metadata.name}')
+          echo "Port-forwarding pod ${POD}:10080 -> localhost:8080"
+          kubectl port-forward -n nantian-gw "pod/${POD}" 8080:10080 &
           PF_PID=$!
           sleep 5
 
