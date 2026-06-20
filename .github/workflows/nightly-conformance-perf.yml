@@ -203,8 +203,8 @@ jobs:
             exit 0
           fi
 
-          echo "Port-forwarding pod ${POD}:80 -> localhost:8080"
-          kubectl port-forward -n nantian-gw "pod/${POD}" 8080:80 &
+          echo "Port-forwarding pod ${POD}:10080 -> localhost:8080"
+          kubectl port-forward -n nantian-gw "pod/${POD}" 8080:10080 &
           PF_PID=$!
           sleep 3
 
