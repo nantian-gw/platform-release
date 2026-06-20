@@ -252,11 +252,13 @@ jobs:
 
           # Wait for proxy service endpoints to be ready
           kubectl wait --for=jsonpath='{.spec.ports[0].port}'=80 svc/nantian-gw-dataplane -n nantian-gw --timeout=60s || true
-          sleep 5
-
           kubectl port-forward -n nantian-gw svc/nantian-gw-dataplane 8080:80 &
           PF_PID=$!
-          sleep 3
+          sleep 5
+
+          echo "Testing connectivity..."
+          curl -v --max-time 5 http://localhost:8080/ 2>&1 | head -20 || true
+          echo "---"
           TARGET="http://localhost:8080"
 
           HEY_OK=true
