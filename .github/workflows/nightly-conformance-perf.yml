@@ -111,8 +111,8 @@ jobs:
         with:
           name: conformance-results
           path: |
-            dist/conformance/
-            tmp/conformance-diagnostics/
+            gateway/dist/conformance/
+            gateway/tmp/conformance-diagnostics/
           if-no-files-found: warn
 
       - name: Cleanup
@@ -268,7 +268,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Download artifacts
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           path: artifacts
 
@@ -278,17 +278,21 @@ jobs:
           RESULTS_DIR="results/nightly/${DATE}"
           mkdir -p "${RESULTS_DIR}"
 
-          if [[ -f artifacts/conformance-results/report.yaml ]]; then
-            cp artifacts/conformance-results/report.yaml "${RESULTS_DIR}/conformance-report.yaml"
+          CONFORMANCE_DIR="artifacts/conformance-results/gateway/dist/conformance"
+
+          if [[ -f "${CONFORMANCE_DIR}/report.yaml" ]]; then
+            cp "${CONFORMANCE_DIR}/report.yaml" "${RESULTS_DIR}/conformance-report.yaml"
           fi
-          if [[ -f artifacts/performance-results/performance.json ]]; then
-            cp artifacts/performance-results/performance.json "${RESULTS_DIR}/performance.json"
+
+          PERF_FILE=$(find artifacts/performance-results -name performance.json 2>/dev/null | head -1)
+          if [[ -n "${PERF_FILE}" && -f "${PERF_FILE}" ]]; then
+            cp "${PERF_FILE}" "${RESULTS_DIR}/performance.json"
           fi
 
           CONFORMANCE="no data"
-          if [[ -f artifacts/conformance-results/run.log ]]; then
-            PASSED=$(grep -c "PASS" artifacts/conformance-results/run.log || echo "0")
-            FAILED=$(grep -c "FAIL" artifacts/conformance-results/run.log || echo "0")
+          if [[ -f "${CONFORMANCE_DIR}/run.log" ]]; then
+            PASSED=$(grep -c "PASS" "${CONFORMANCE_DIR}/run.log" || echo "0")
+            FAILED=$(grep -c "FAIL" "${CONFORMANCE_DIR}/run.log" || echo "0")
             CONFORMANCE="${PASSED} passed, ${FAILED} failed"
           fi
 
