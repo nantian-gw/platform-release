@@ -76,12 +76,43 @@ dashboard_repo="https://github.com/nantian-gw/dashboard"
 website_repo="https://github.com/nantian-gw/website"
 helm_charts_repo="https://github.com/nantian-gw/helm-charts"
 
-gateway_commit="$(resolve_commit "${gateway_repo}" "${GATEWAY_TAG}")"
-dataplane_commit="$(resolve_commit "${dataplane_repo}" "${DATAPLANE_TAG}")"
-proto_commit="$(resolve_commit "${proto_repo}" "${PROTO_TAG}")"
-dashboard_commit="$(resolve_commit "${dashboard_repo}" "${DASHBOARD_TAG}")"
-website_commit="$(resolve_commit "${website_repo}" "${WEBSITE_TAG}")"
-helm_charts_commit="$(resolve_commit "${helm_charts_repo}" "${HELM_CHARTS_TAG}")"
+gateway_commit=""
+dataplane_commit=""
+proto_commit=""
+dashboard_commit=""
+website_commit=""
+helm_charts_commit=""
+
+resolve_commit "${gateway_repo}" "${GATEWAY_TAG}" >/tmp/gateway_commit &
+pid_gateway=$!
+resolve_commit "${dataplane_repo}" "${DATAPLANE_TAG}" >/tmp/dataplane_commit &
+pid_dataplane=$!
+resolve_commit "${proto_repo}" "${PROTO_TAG}" >/tmp/proto_commit &
+pid_proto=$!
+resolve_commit "${dashboard_repo}" "${DASHBOARD_TAG}" >/tmp/dashboard_commit &
+pid_dashboard=$!
+resolve_commit "${website_repo}" "${WEBSITE_TAG}" >/tmp/website_commit &
+pid_website=$!
+resolve_commit "${helm_charts_repo}" "${HELM_CHARTS_TAG}" >/tmp/helm_charts_commit &
+pid_helm=$!
+
+failed=false
+for pid in ${pid_gateway} ${pid_dataplane} ${pid_proto} ${pid_dashboard} ${pid_website} ${pid_helm}; do
+  if ! wait "${pid}"; then
+    failed=true
+  fi
+done
+if [[ "${failed}" == "true" ]]; then
+  echo "one or more tag resolutions failed" >&2
+  exit 1
+fi
+
+gateway_commit="$(cat /tmp/gateway_commit)"
+dataplane_commit="$(cat /tmp/dataplane_commit)"
+proto_commit="$(cat /tmp/proto_commit)"
+dashboard_commit="$(cat /tmp/dashboard_commit)"
+website_commit="$(cat /tmp/website_commit)"
+helm_charts_commit="$(cat /tmp/helm_charts_commit)"
 
 release_date="$(date -u +%F)"
 
