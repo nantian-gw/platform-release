@@ -182,8 +182,9 @@ jobs:
           kubectl get svc -n nantian-gw
 
           SVC=$(kubectl get svc -n nantian-gw -o json | jq -r '.items[0].metadata.name')
-          if [[ -z "${SVC}" || "${SVC}" == "null" ]]; then
-            echo "No services found in nantian-gw namespace"
+          SVC_PORT=$(kubectl get svc -n nantian-gw -o json | jq -r '.items[0].spec.ports[0].port')
+          if [[ -z "${SVC}" || "${SVC}" == "null" || -z "${SVC_PORT}" || "${SVC_PORT}" == "null" ]]; then
+            echo "No services or ports found in nantian-gw namespace"
             cat > dist/performance.json <<'JSON'
           {
             "tool": "hey",
@@ -200,8 +201,8 @@ jobs:
             exit 0
           fi
 
-          echo "Port-forwarding service ${SVC}:80 -> localhost:8080"
-          kubectl port-forward -n nantian-gw "svc/${SVC}" 8080:80 &
+          echo "Port-forwarding service ${SVC}:${SVC_PORT} -> localhost:8080"
+          kubectl port-forward -n nantian-gw "svc/${SVC}" 8080:"${SVC_PORT}" &
           PF_PID=$!
           sleep 3
 
