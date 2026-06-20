@@ -77,6 +77,10 @@ jobs:
         with:
           toolchain: "1.96.0"
           components: rustfmt,clippy
+      - uses: Swatinem/rust-cache@v2
+        if: steps.changed-manifests.outputs.has_manifests == 'true'
+        with:
+          workspaces: "dataplane -> target"
       - uses: actions/setup-node@v5
         if: steps.changed-manifests.outputs.has_manifests == 'true'
         with:
