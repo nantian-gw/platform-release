@@ -165,9 +165,6 @@ jobs:
           KIND_DASHBOARD_IMAGE: ${{ env.DASHBOARD_IMAGE }}
         run: scripts/ci/deploy-kind-conformance.sh
 
-      - name: Install hey
-        run: go install github.com/rakyll/hey@latest
-
       - name: Wait for gateway readiness
         run: |
           kubectl wait --for=condition=available --timeout=120s deployment -n nantian-gw --all
@@ -209,43 +206,61 @@ jobs:
       - name: Load test
         id: perf
         run: |
-          NODE_PORT=$(kubectl get svc perf-echo -n nantian-gw -o jsonpath='{.spec.ports[0].nodePort}')
-          echo "Load testing on NodePort ${NODE_PORT}"
-
-          HEY_OK=true
-          hey -n 500 -c 10 -m GET "http://localhost:${NODE_PORT}/" \
-            -o json > /tmp/hey-output.json 2>/tmp/hey-stderr.txt || HEY_OK=false
-
-          if [[ "${HEY_OK}" != "true" || ! -s /tmp/hey-output.json ]]; then
-            echo "hey failed"
-            cat /tmp/hey-stderr.txt 2>/dev/null || true
-            cat > dist/performance.json <<'JSON'
+          echo "Running load test from inside cluster..."
+          kubectl run hey-runner -n nantian-gw --image=alpine/curl:latest --rm -i --restart=Never -- \
+            sh -c '
+            apk add --no-cache curl jq >/dev/null 2>&1
+            TOTAL=500
+            CONC=10
+            START=$(date +%s%3N)
+            SUCCESS=0
+            for i in $(seq 1 '"${TOTAL}"'); do
+              CODE=$(curl -s -o /dev/null -w "%{http_code}" http://perf-echo/ 2>/dev/null)
+              if [ "$CODE" = "200" ]; then SUCCESS=$((SUCCESS+1)); fi
+            done &
+            for i in $(seq 2 $CONC); do
+              for j in $(seq 1 $((TOTAL/CONC))); do
+                CODE=$(curl -s -o /dev/null -w "%{http_code}" http://perf-echo/ 2>/dev/null)
+                if [ "$CODE" = "200" ]; then SUCCESS=$((SUCCESS+1)); fi
+              done &
+            done
+            wait
+            END=$(date +%s%3N)
+            ELAPSED=$((END - START))
+            RPS=$(echo "scale=1; $SUCCESS * 1000 / $ELAPSED" | bc)
+            cat > /tmp/results.json <<JSON
           {
-            "tool": "hey",
-            "total_requests": 0,
-            "concurrency": 10,
-            "requests_per_second": 0,
-            "latency_p50_ms": 0,
-            "latency_p95_ms": 0,
-            "latency_p99_ms": 0,
-            "note": "hey failed"
+            "tool": "curl-loop",
+            "total_requests": '"${TOTAL}"',
+            "concurrency": '"${CONC}"',
+            "total_success": '"${SUCCESS}"',
+            "elapsed_ms": '"${ELAPSED}"',
+            "requests_per_second": '"${RPS}"'
           }
           JSON
-          else
-            RPS=$(jq -r '.requestsPerSec // 0' /tmp/hey-output.json)
-            P50=$(jq -r '.latencyDistribution | map(select(.percentage >= 50)) | .[0].latency // 0' /tmp/hey-output.json)
-            P95=$(jq -r '.latencyDistribution | map(select(.percentage >= 95)) | .[0].latency // 0' /tmp/hey-output.json)
-            P99=$(jq -r '.latencyDistribution | map(select(.percentage >= 99)) | .[0].latency // 0' /tmp/hey-output.json)
+            cat /tmp/results.json
+            ' 2>/dev/null | tail -5 > /tmp/hey-output.json || true
 
+          if [[ -s /tmp/hey-output.json ]]; then
+            cat /tmp/hey-output.json
+            RPS=$(jq -r '.requests_per_second // 0' /tmp/hey-output.json)
             cat > dist/performance.json <<JSON
           {
-            "tool": "hey",
+            "tool": "curl-loop",
             "total_requests": 500,
             "concurrency": 10,
             "requests_per_second": ${RPS},
-            "latency_p50_ms": ${P50},
-            "latency_p95_ms": ${P95},
-            "latency_p99_ms": ${P99}
+            "total_success": $(jq -r '.total_success // 0' /tmp/hey-output.json)
+          }
+          JSON
+          else
+            cat > dist/performance.json <<'JSON'
+          {
+            "tool": "curl-loop",
+            "total_requests": 0,
+            "concurrency": 10,
+            "requests_per_second": 0,
+            "note": "load test failed"
           }
           JSON
           fi
