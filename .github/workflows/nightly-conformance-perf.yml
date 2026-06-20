@@ -1,0 +1,291 @@
+name: Nightly Conformance + Performance
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  packages: read
+
+env:
+  CLUSTER_NAME: nightly
+  GATEWAY_API_VERSION: v1.5.1
+  CONTROLPLANE_IMAGE: ghcr.io/nantian-gw/nantian-controlplane:latest
+  DATAPLANE_IMAGE: ghcr.io/nantian-gw/dataplane:latest
+  DASHBOARD_IMAGE: ghcr.io/nantian-gw/dashboard:latest
+
+jobs:
+  conformance:
+    name: Gateway API Conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    outputs:
+      passed: ${{ steps.conformance.outputs.passed }}
+      failed: ${{ steps.conformance.outputs.failed }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          repository: nantian-gw/gateway
+          path: gateway
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: gateway/go.mod
+          cache-dependency-path: gateway/go.sum
+
+      - name: Install Kind tooling
+        working-directory: gateway
+        run: scripts/ci/install-kind-tools.sh
+
+      - name: Create kind cluster
+        working-directory: gateway
+        run: scripts/ci/create-kind-cluster.sh
+
+      - name: Install Gateway API CRDs
+        working-directory: gateway
+        run: scripts/ci/install-gateway-api-crds.sh
+
+      - name: Pull latest images
+        run: |
+          docker pull "${CONTROLPLANE_IMAGE}"
+          docker pull "${DATAPLANE_IMAGE}"
+          docker pull "${DASHBOARD_IMAGE}"
+
+      - name: Load images into kind
+        run: |
+          kind load docker-image "${CONTROLPLANE_IMAGE}" --name "${CLUSTER_NAME}"
+          kind load docker-image "${DATAPLANE_IMAGE}" --name "${CLUSTER_NAME}"
+          kind load docker-image "${DASHBOARD_IMAGE}" --name "${CLUSTER_NAME}"
+
+      - name: Deploy Nantian Gateway
+        working-directory: gateway
+        run: scripts/ci/deploy-kind-conformance.sh
+
+      - name: Record image versions
+        run: |
+          echo "=== Images under test ==="
+          kubectl get pods -n nantian-gw -o json | jq -r '.items[] | .spec.containers[] | "  \(.name): \(.image)"'
+          echo "=== Image digests ==="
+          kubectl get pods -n nantian-gw -o json | jq -r '.items[] | .status.containerStatuses[] | "  \(.name): \(.imageID)"'
+
+      - name: Run conformance tests
+        id: conformance
+        working-directory: gateway
+        run: |
+          mkdir -p dist/conformance
+          report_path="${GITHUB_WORKSPACE}/dist/conformance/report.yaml"
+          set +e
+          go test -tags=conformance -count=1 -v -timeout 30m ./conformance/ \
+            -args \
+            -gateway-class nantian-gw \
+            -report-output "$report_path" \
+            -organization "Nantian Gateway" \
+            -project "Nantian Gateway" \
+            -url "https://github.com/nantian-gw/gateway" \
+            -version nightly \
+            -contact "https://github.com/nantian-gw/gateway/issues" 2>&1 \
+            | tee dist/conformance/run.log
+          status=${PIPESTATUS[0]}
+          echo "exit_code=${status}" >>"${GITHUB_OUTPUT}"
+          exit "${status}"
+
+      - name: Collect diagnostics on failure
+        if: failure()
+        working-directory: gateway
+        run: ARTIFACT_DIR=tmp/conformance-diagnostics scripts/ci/collect-kind-diagnostics.sh
+
+      - name: Upload conformance artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: conformance-results
+          path: |
+            dist/conformance/
+            tmp/conformance-diagnostics/
+          if-no-files-found: warn
+
+      - name: Cleanup
+        if: always()
+        run: command -v kind >/dev/null 2>&1 && kind delete cluster --name "$CLUSTER_NAME" || true
+
+  performance:
+    name: HTTP Load Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      summary_json: ${{ steps.perf.outputs.summary_json }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          repository: nantian-gw/gateway
+          path: gateway
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: gateway/go.mod
+          cache-dependency-path: gateway/go.sum
+
+      - name: Install Kind tooling
+        working-directory: gateway
+        run: scripts/ci/install-kind-tools.sh
+
+      - name: Create kind cluster
+        working-directory: gateway
+        run: GATEWAY_API_CRDS_SKIP=true scripts/ci/create-kind-cluster.sh
+
+      - name: Install Gateway API CRDs
+        working-directory: gateway
+        run: scripts/ci/install-gateway-api-crds.sh
+
+      - name: Pull latest images
+        run: |
+          docker pull "${CONTROLPLANE_IMAGE}"
+          docker pull "${DATAPLANE_IMAGE}"
+
+      - name: Load images into kind
+        run: |
+          kind load docker-image "${CONTROLPLANE_IMAGE}" --name "${CLUSTER_NAME}"
+          kind load docker-image "${DATAPLANE_IMAGE}" --name "${CLUSTER_NAME}"
+
+      - name: Deploy Nantian Gateway
+        working-directory: gateway
+        run: scripts/ci/deploy-kind-conformance.sh
+
+      - name: Install hey
+        run: go install github.com/rakyll/hey@latest
+
+      - name: Wait for gateway readiness
+        run: |
+          kubectl wait --for=condition=available --timeout=120s deployment -n nantian-gw --all
+          kubectl get pods -n nantian-gw
+
+      - name: Port-forward and load test
+        id: perf
+        run: |
+          # Find a NodePort to hit
+          PORT=$(kubectl get svc -n nantian-gw -o json | jq -r '.items[] | select(.spec.type=="NodePort") | .spec.ports[0].nodePort' | head -1)
+          if [[ -z "${PORT}" ]]; then
+            PORT=30080
+          fi
+
+          echo "Load testing on port ${PORT}..."
+
+          hey -n 10000 -c 50 -m GET \
+            -H "Host: conformance.nantian.dev" \
+            "http://localhost:${PORT}/" \
+            -o json > /tmp/hey-output.json
+
+          # Extract key metrics
+          RPS=$(jq '.requestsPerSec' /tmp/hey-output.json)
+          P50=$(jq '.latencyDistribution | map(select(.percentage >= 50)) | .[0].latency' /tmp/hey-output.json)
+          P95=$(jq '.latencyDistribution | map(select(.percentage >= 95)) | .[0].latency' /tmp/hey-output.json)
+          P99=$(jq '.latencyDistribution | map(select(.percentage >= 99)) | .[0].latency' /tmp/hey-output.json)
+          ERRORS=$(jq '.statusDistribution["0"] // "0" | tonumber' /tmp/hey-output.json)
+
+          cat > dist/performance.json <<JSON
+          {
+            "tool": "hey",
+            "total_requests": 10000,
+            "concurrency": 50,
+            "requests_per_second": ${RPS},
+            "latency_p50_ms": ${P50},
+            "latency_p95_ms": ${P95},
+            "latency_p99_ms": ${P99},
+            "errors": ${ERRORS}
+          }
+          JSON
+
+          cat dist/performance.json
+
+      - name: Upload performance artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: performance-results
+          path: dist/performance.json
+          if-no-files-found: warn
+
+      - name: Cleanup
+        if: always()
+        run: command -v kind >/dev/null 2>&1 && kind delete cluster --name "$CLUSTER_NAME" || true
+
+  commit-results:
+    name: Commit Results
+    needs: [conformance, performance]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v6
+        with:
+          path: artifacts
+
+      - name: Generate nightly results
+        run: |
+          DATE=$(date -u +%Y-%m-%d)
+          RESULTS_DIR="results/nightly/${DATE}"
+          mkdir -p "${RESULTS_DIR}"
+
+          # Copy conformance report
+          if [[ -f artifacts/conformance-results/report.yaml ]]; then
+            cp artifacts/conformance-results/report.yaml "${RESULTS_DIR}/conformance-report.yaml"
+          fi
+
+          # Copy performance report
+          if [[ -f artifacts/performance-results/performance.json ]]; then
+            cp artifacts/performance-results/performance.json "${RESULTS_DIR}/performance.json"
+          fi
+
+          # Generate summary
+          CONFORMANCE="no data"
+          if [[ -f artifacts/conformance-results/run.log ]]; then
+            PASSED=$(grep -c "PASS" artifacts/conformance-results/run.log || echo "0")
+            FAILED=$(grep -c "FAIL" artifacts/conformance-results/run.log || echo "0")
+            CONFORMANCE="${PASSED} passed, ${FAILED} failed"
+          fi
+
+          PERF="no data"
+          if [[ -f "${RESULTS_DIR}/performance.json" ]]; then
+            RPS=$(jq -r '.requests_per_second' "${RESULTS_DIR}/performance.json")
+            P95=$(jq -r '.latency_p95_ms' "${RESULTS_DIR}/performance.json")
+            PERF="RPS: ${RPS}, P95: ${P95}ms"
+          fi
+
+          cat > "${RESULTS_DIR}/summary.md" <<EOF
+          # Nightly Test Results — ${DATE}
+
+          | Test | Result |
+          |------|--------|
+          | Conformance | ${CONFORMANCE} |
+          | Performance | ${PERF} |
+
+          Images tested:
+          - Control Plane: ${CONTROLPLANE_IMAGE}
+          - Data Plane: ${DATAPLANE_IMAGE}
+          EOF
+
+          cat "${RESULTS_DIR}/summary.md"
+
+      - name: Commit and push results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add results/nightly/
+          if git diff --staged --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+
+          DATE=$(date -u +%Y-%m-%d)
+          git commit -m "chore(results): record nightly conformance + performance for ${DATE}"
+          git push
