@@ -227,11 +227,13 @@ jobs:
             RPS=0
           fi
           echo \"{\\\"tool\\\":\\\"curl-loop\\\",\\\"total_requests\\\":\$TOTAL,\\\"concurrency\\\":1,\\\"total_success\\\":\$SUCCESS,\\\"elapsed_ms\\\":\$ELAPSED,\\\"requests_per_second\\\":\$RPS}\"
-          " 2>/dev/null | tail -1 > /tmp/hey-output.json || true
+          " 2>/dev/null > /tmp/hey-output.json || true
 
-          if [[ -s /tmp/hey-output.json && "$(cat /tmp/hey-output.json)" == "{"* ]]; then
+          if [[ -s /tmp/hey-output.json ]]; then
+            echo "=== raw output ==="
             cat /tmp/hey-output.json
-            RPS=$(jq -r '.requests_per_second // 0' /tmp/hey-output.json)
+            echo "=== end raw ==="
+            RPS=$(jq -r '.requests_per_second // 0' /tmp/hey-output.json 2>/dev/null || echo 0)
             SUCCESS=$(jq -r '.total_success // 0' /tmp/hey-output.json)
             cat > dist/performance.json <<JSON
           {
