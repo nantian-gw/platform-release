@@ -122,7 +122,7 @@ jobs:
   performance:
     name: HTTP Load Test
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 75
     env:
       CLUSTER_NAME: nightly-perf
     steps:
@@ -148,44 +148,36 @@ jobs:
         working-directory: gateway
         run: scripts/ci/install-gateway-api-crds.sh
 
-      - name: Pull latest images
+      - name: Pull images
         run: |
-          docker pull "${CONTROLPLANE_IMAGE}"
-          docker pull "${DATAPLANE_IMAGE}"
-          docker pull curlimages/curl:latest
+          docker pull nginx:alpine
+          docker pull peterevans/vegeta:latest
 
       - name: Load images into kind
         run: |
-          kind load docker-image "${CONTROLPLANE_IMAGE}" --name "${CLUSTER_NAME}"
-          kind load docker-image "${DATAPLANE_IMAGE}" --name "${CLUSTER_NAME}"
-          kind load docker-image curlimages/curl:latest --name "${CLUSTER_NAME}"
+          kind load docker-image nginx:alpine --name "${CLUSTER_NAME}"
+          kind load docker-image peterevans/vegeta:latest --name "${CLUSTER_NAME}"
 
-      - name: Deploy Nantian Gateway
-        working-directory: gateway
-        env:
-          KIND_DATAPLANE_IMAGE: ${{ env.DATAPLANE_IMAGE }}
-          KIND_DASHBOARD_IMAGE: ${{ env.DASHBOARD_IMAGE }}
-        run: scripts/ci/deploy-kind-conformance.sh
-
-      - name: Wait for gateway readiness
-        run: |
-          kubectl wait --for=condition=available --timeout=120s deployment -n nantian-gw --all
-          kubectl get pods -n nantian-gw
-
-      - name: Deploy echo server and NodePort
+      - name: Deploy echo server
         run: |
           kubectl apply -f - <<'YAML'
           apiVersion: v1
           kind: Pod
           metadata:
             name: perf-echo
-            namespace: nantian-gw
             labels:
               app: perf-echo
           spec:
             containers:
             - name: nginx
               image: nginx:alpine
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 64Mi
+                limits:
+                  cpu: 500m
+                  memory: 128Mi
               ports:
               - containerPort: 80
           ---
@@ -193,56 +185,93 @@ jobs:
           kind: Service
           metadata:
             name: perf-echo
-            namespace: nantian-gw
           spec:
-            type: NodePort
             selector:
               app: perf-echo
             ports:
             - port: 80
               targetPort: 80
           YAML
+          kubectl wait --for=condition=ready pod/perf-echo --timeout=60s
 
-          kubectl wait --for=condition=ready pod/perf-echo -n nantian-gw --timeout=60s
-
-      - name: Load test
-        id: perf
+      - name: Collect baseline metrics
         run: |
-          echo "Running load test from inside cluster..."
-          kubectl run hey-runner -n nantian-gw --image=curlimages/curl:latest --rm --attach --restart=Never -- \
-            sh -c 'TOTAL=1000; START=$(date +%s%3N); SUCCESS=0; for i in $(seq 1 $TOTAL); do CODE=$(curl -s -o /dev/null -w "%{http_code}" http://perf-echo/ 2>/dev/null); if [ "$CODE" = "200" ]; then SUCCESS=$((SUCCESS+1)); fi; done; END=$(date +%s%3N); ELAPSED=$((END-START)); if [ $ELAPSED -gt 0 ]; then RPS=$(echo "scale=1; $SUCCESS * 1000 / $ELAPSED" | bc); else RPS=0; fi; echo "{\"tool\":\"curl-loop\",\"total_requests\":$TOTAL,\"total_success\":$SUCCESS,\"elapsed_ms\":$ELAPSED,\"requests_per_second\":$RPS}"' \
-            > /tmp/hey-output.json || true
-          grep '^{' /tmp/hey-output.json > /tmp/hey-clean.json 2>/dev/null || true
+          kubectl top pod perf-echo 2>/dev/null || echo "metrics not available yet"
+          echo "[]" > /tmp/cpu-mem-samples.json
 
-          if [[ -s /tmp/hey-clean.json ]]; then
-            mkdir -p dist
-            echo "=== raw output ==="
-            cat /tmp/hey-clean.json
-            echo "=== end raw ==="
-            RPS=$(jq -r '.requests_per_second // 0' /tmp/hey-clean.json 2>/dev/null || echo 0)
-            SUCCESS=$(jq -r '.total_success // 0' /tmp/hey-clean.json)
-            cat > dist/performance.json <<JSON
-          {
-            "tool": "curl-loop",
-            "total_requests": 1000,
-            "concurrency": 1,
-            "requests_per_second": ${RPS},
-            "total_success": ${SUCCESS}
-          }
-          JSON
+      - name: Start metrics collection (background)
+        run: |
+          for i in $(seq 1 30); do
+            sleep 60
+            CPU=$(kubectl top pod perf-echo --no-headers 2>/dev/null | awk '{print $2}' | sed 's/m//')
+            MEM=$(kubectl top pod perf-echo --no-headers 2>/dev/null | awk '{print $3}' | sed 's/Mi//')
+            if [[ -n "${CPU}" ]]; then
+              echo "t=${i}min cpu=${CPU}m mem=${MEM}Mi"
+              echo "{\"minute\":$i,\"cpu_m\":${CPU:-0},\"mem_mi\":${MEM:-0}}," >> /tmp/cpu-mem-samples.json
+            fi
+          done &
+
+      - name: Run vegeta 30-minute load test
+        id: vegeta
+        run: |
+          kubectl run vegeta --image=peterevans/vegeta:latest --rm --attach --restart=Never -- \
+            sh -c 'echo "GET http://perf-echo/" | vegeta attack -duration=30m -rate=0 -max-workers=50 | vegeta report -type=json' \
+            > /tmp/vegeta-output.json 2>/tmp/vegeta-stderr.txt || true
+
+          cat /tmp/vegeta-stderr.txt 2>/dev/null | tail -5 || true
+          cat /tmp/vegeta-output.json | head -20
+
+      - name: Merge results
+        run: |
+          wait
+
+          SAMPLES=$(cat /tmp/cpu-mem-samples.json | sed '$ s/,$//')
+          SAMPLES="[${SAMPLES}]"
+
+          if [[ -s /tmp/vegeta-output.json ]]; then
+            REQS=$(jq -r '.requests // 0' /tmp/vegeta-output.json)
+            RATE=$(jq -r '.rate // 0' /tmp/vegeta-output.json)
+            SUCCESS=$(jq -r '.success // 0' /tmp/vegeta-output.json)
+            P50=$(jq -r '.latencies."50th" // 0' /tmp/vegeta-output.json)
+            P95=$(jq -r '.latencies."95th" // 0' /tmp/vegeta-output.json)
+            P99=$(jq -r '.latencies."99th" // 0' /tmp/vegeta-output.json)
+            MAX=$(jq -r '.latencies.max // 0' /tmp/vegeta-output.json)
+            MEAN=$(jq -r '.latencies.mean // 0' /tmp/vegeta-output.json)
           else
-            mkdir -p dist
-            cat /tmp/hey-output.json 2>/dev/null || true
-            cat > dist/performance.json <<'JSON'
+            REQS=0; RATE=0; SUCCESS=0; P50=0; P95=0; P99=0; MAX=0; MEAN=0
+          fi
+
+          CPU_AVG=$(echo "${SAMPLES}" | jq '[.[].cpu_m] | add / length // 0' 2>/dev/null || echo 0)
+          CPU_MAX=$(echo "${SAMPLES}" | jq '[.[].cpu_m] | max // 0' 2>/dev/null || echo 0)
+          MEM_AVG=$(echo "${SAMPLES}" | jq '[.[].mem_mi] | add / length // 0' 2>/dev/null || echo 0)
+          MEM_MAX=$(echo "${SAMPLES}" | jq '[.[].mem_mi] | max // 0' 2>/dev/null || echo 0)
+
+          mkdir -p dist
+          cat > dist/performance.json <<JSON
           {
-            "tool": "curl-loop",
-            "total_requests": 0,
-            "concurrency": 1,
-            "requests_per_second": 0,
-            "note": "load test failed"
+            "tool": "vegeta",
+            "duration_sec": 1800,
+            "total_requests": ${REQS},
+            "rate_rps": ${RATE},
+            "success_rate": ${SUCCESS},
+            "latency": {
+              "p50_ms": ${P50},
+              "p95_ms": ${P95},
+              "p99_ms": ${P99},
+              "max_ms": ${MAX},
+              "mean_ms": ${MEAN}
+            },
+            "cpu": {
+              "avg_m": ${CPU_AVG},
+              "max_m": ${CPU_MAX}
+            },
+            "memory": {
+              "avg_mi": ${MEM_AVG},
+              "max_mi": ${MEM_MAX}
+            },
+            "cpu_mem_samples": ${SAMPLES}
           }
           JSON
-          fi
 
           cat dist/performance.json
 
