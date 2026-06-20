@@ -14,7 +14,6 @@ permissions:
   packages: read
 
 env:
-  CLUSTER_NAME: nightly
   GATEWAY_API_VERSION: v1.5.1
   CONTROLPLANE_IMAGE: ghcr.io/nantian-gw/nantian-controlplane:latest
   DATAPLANE_IMAGE: ghcr.io/nantian-gw/dataplane:latest
@@ -25,6 +24,8 @@ jobs:
     name: Gateway API Conformance
     runs-on: ubuntu-latest
     timeout-minutes: 75
+    env:
+      CLUSTER_NAME: nightly-conformance
     outputs:
       passed: ${{ steps.conformance.outputs.passed }}
       failed: ${{ steps.conformance.outputs.failed }}
@@ -122,6 +123,8 @@ jobs:
     name: HTTP Load Test
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      CLUSTER_NAME: nightly-perf
     outputs:
       summary_json: ${{ steps.perf.outputs.summary_json }}
     steps:
