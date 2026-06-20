@@ -3,7 +3,7 @@
 | Test | Result |
 |------|--------|
 | Conformance | no data |
-| Performance | no data |
+| Performance | RPS: 200000.0, P95: N/Ams |
 
 Images tested:
 - Control Plane: ghcr.io/nantian-gw/nantian-controlplane:latest
