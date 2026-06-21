@@ -219,7 +219,10 @@ jobs:
             > /tmp/vegeta-output.json 2>/tmp/vegeta-stderr.txt || true
 
           cat /tmp/vegeta-stderr.txt 2>/dev/null | tail -5 || true
-          cat /tmp/vegeta-output.json | head -20
+          cat /tmp/vegeta-output.json | grep '^{' | head -5
+
+      - name: Clean vegeta raw output
+        run: grep '^{' /tmp/vegeta-output.json > /tmp/vegeta-clean.json 2>/dev/null || true
 
       - name: Merge results
         run: |
@@ -228,32 +231,39 @@ jobs:
           # Extract metrics (best-effort, don't fail on parse errors)
           set +e
           SAMPLES=$(cat /tmp/cpu-mem-samples.json 2>/dev/null | sed '$ s/,$//')
-          SAMPLES="[${SAMPLES}]"
+          if [[ -z "${SAMPLES}" ]]; then
+            SAMPLES="[]"
+          else
+            SAMPLES="[${SAMPLES}]"
+          fi
 
-          if [[ -s /tmp/vegeta-output.json ]]; then
-            REQS=$(jq -r '.requests // 0' /tmp/vegeta-output.json)
-            RATE=$(jq -r '.rate // 0' /tmp/vegeta-output.json)
-            SUCCESS=$(jq -r '.success // 0' /tmp/vegeta-output.json)
-            P50=$(jq -r '(.latencies."50th" // 0) / 1000000 | floor' /tmp/vegeta-output.json)
-            P90=$(jq -r '(.latencies."90th" // 0) / 1000000 | floor' /tmp/vegeta-output.json)
-            P95=$(jq -r '(.latencies."95th" // 0) / 1000000 | floor' /tmp/vegeta-output.json)
-            P99=$(jq -r '(.latencies."99th" // 0) / 1000000 | floor' /tmp/vegeta-output.json)
-            MAX=$(jq -r '(.latencies.max // 0) / 1000000 | floor' /tmp/vegeta-output.json)
-            MIN=$(jq -r '(.latencies.min // 0) / 1000000 | floor' /tmp/vegeta-output.json)
-            MEAN=$(jq -r '(.latencies.mean // 0) / 1000000 | floor' /tmp/vegeta-output.json)
-            BYTES_IN=$(jq -r '.bytes_in.total // 0' /tmp/vegeta-output.json)
-            BYTES_OUT=$(jq -r '.bytes_out.total // 0' /tmp/vegeta-output.json)
-            STATUS_CODES=$(jq -r '.status_codes // {}' /tmp/vegeta-output.json)
-            THROUGHPUT=$(jq -r '.throughput // 0' /tmp/vegeta-output.json)
+          if [[ -s /tmp/vegeta-clean.json ]]; then
+            REQS=$(jq -r '.requests // 0' /tmp/vegeta-clean.json)
+            RATE=$(jq -r '.rate // 0' /tmp/vegeta-clean.json)
+            SUCCESS=$(jq -r '.success // 0' /tmp/vegeta-clean.json)
+            P50=$(jq -r '(.latencies."50th" // 0) / 1000000 | floor' /tmp/vegeta-clean.json)
+            P90=$(jq -r '(.latencies."90th" // 0) / 1000000 | floor' /tmp/vegeta-clean.json)
+            P95=$(jq -r '(.latencies."95th" // 0) / 1000000 | floor' /tmp/vegeta-clean.json)
+            P99=$(jq -r '(.latencies."99th" // 0) / 1000000 | floor' /tmp/vegeta-clean.json)
+            MAX=$(jq -r '(.latencies.max // 0) / 1000000 | floor' /tmp/vegeta-clean.json)
+            MIN=$(jq -r '(.latencies.min // 0) / 1000000 | floor' /tmp/vegeta-clean.json)
+            MEAN=$(jq -r '(.latencies.mean // 0) / 1000000 | floor' /tmp/vegeta-clean.json)
+            BYTES_IN=$(jq -r '.bytes_in.total // 0' /tmp/vegeta-clean.json)
+            BYTES_OUT=$(jq -r '.bytes_out.total // 0' /tmp/vegeta-clean.json)
+            STATUS_CODES=$(jq -r '.status_codes // {}' /tmp/vegeta-clean.json)
+            THROUGHPUT=$(jq -r '.throughput // 0' /tmp/vegeta-clean.json)
           else
             REQS=0; RATE=0; SUCCESS=0; P50=0; P90=0; P95=0; P99=0; MAX=0; MIN=0; MEAN=0
             BYTES_IN=0; BYTES_OUT=0; STATUS_CODES="{}"; THROUGHPUT=0
           fi
 
-          CPU_AVG=$(echo "${SAMPLES}" | jq '[.[].cpu_m] | add / length // 0' 2>/dev/null || echo 0)
-          CPU_MAX=$(echo "${SAMPLES}" | jq '[.[].cpu_m] | max // 0' 2>/dev/null || echo 0)
-          MEM_AVG=$(echo "${SAMPLES}" | jq '[.[].mem_mi] | add / length // 0' 2>/dev/null || echo 0)
-          MEM_MAX=$(echo "${SAMPLES}" | jq '[.[].mem_mi] | max // 0' 2>/dev/null || echo 0)
+          CPU_AVG=0; CPU_MAX=0; MEM_AVG=0; MEM_MAX=0
+          if [[ "${SAMPLES}" != "[]" ]]; then
+            CPU_AVG=$(echo "${SAMPLES}" | jq '[.[].cpu_m] | add / length // 0' 2>/dev/null || echo 0)
+            CPU_MAX=$(echo "${SAMPLES}" | jq '[.[].cpu_m] | max // 0' 2>/dev/null || echo 0)
+            MEM_AVG=$(echo "${SAMPLES}" | jq '[.[].mem_mi] | add / length // 0' 2>/dev/null || echo 0)
+            MEM_MAX=$(echo "${SAMPLES}" | jq '[.[].mem_mi] | max // 0' 2>/dev/null || echo 0)
+          fi
 
           mkdir -p dist
           cat > dist/performance.json <<JSON
@@ -291,8 +301,8 @@ jobs:
           cat dist/performance.json
 
           # Save raw vegeta output for full data archive
-          if [[ -s /tmp/vegeta-output.json ]]; then
-            cp /tmp/vegeta-output.json dist/vegeta-raw.json
+          if [[ -s /tmp/vegeta-clean.json ]]; then
+            cp /tmp/vegeta-clean.json dist/vegeta-raw.json
           fi
 
       - name: Upload performance artifact
@@ -358,10 +368,21 @@ jobs:
             TOTAL=$(jq -r '.total_requests // "N/A"' "${RESULTS_DIR}/performance.json")
             RPS=$(jq -r '.rate_rps // "N/A"' "${RESULTS_DIR}/performance.json")
             P50=$(jq -r '.latency.p50_ms // "N/A"' "${RESULTS_DIR}/performance.json")
+            P90=$(jq -r '.latency.p90_ms // "N/A"' "${RESULTS_DIR}/performance.json")
             P95=$(jq -r '.latency.p95_ms // "N/A"' "${RESULTS_DIR}/performance.json")
             P99=$(jq -r '.latency.p99_ms // "N/A"' "${RESULTS_DIR}/performance.json")
             MAX=$(jq -r '.latency.max_ms // "N/A"' "${RESULTS_DIR}/performance.json")
-            PERF="${TOTAL} req @ ${RPS} RPS | P50=${P50}ms P95=${P95}ms P99=${P99}ms max=${MAX}ms"
+            MEAN=$(jq -r '.latency.mean_ms // "N/A"' "${RESULTS_DIR}/performance.json")
+            PERF="${TOTAL} req @ ${RPS} RPS
+
+          | Percentile | Latency |
+          |-----------|---------|
+          | p50       | ${P50}ms |
+          | p90       | ${P90}ms |
+          | p95       | ${P95}ms |
+          | p99       | ${P99}ms |
+          | max       | ${MAX}ms |
+          | mean      | ${MEAN}ms |"
           fi
 
           cat > "${RESULTS_DIR}/summary.md" <<EOF
