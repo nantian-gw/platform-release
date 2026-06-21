@@ -223,9 +223,11 @@ jobs:
 
       - name: Merge results
         run: |
-          wait
+          wait || true
 
-          SAMPLES=$(cat /tmp/cpu-mem-samples.json | sed '$ s/,$//')
+          # Extract metrics (best-effort, don't fail on parse errors)
+          set +e
+          SAMPLES=$(cat /tmp/cpu-mem-samples.json 2>/dev/null | sed '$ s/,$//')
           SAMPLES="[${SAMPLES}]"
 
           if [[ -s /tmp/vegeta-output.json ]]; then
