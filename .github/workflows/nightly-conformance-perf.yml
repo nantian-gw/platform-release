@@ -265,11 +265,15 @@ jobs:
         run: |
           echo "=== Services ==="
           kubectl get svc -n nantian-gw
-          echo "=== Gateways ==="
-          kubectl get gateway -A
+          echo "=== Endpoints ==="
+          kubectl get endpoints -n nantian-gw
+
+          GW_SVC=$(kubectl get svc -n nantian-gw -o json | jq -r '.items[] | select(.metadata.name | startswith("perf-gw")) | .metadata.name' | head -1)
+          if [[ -z "${GW_SVC}" ]]; then GW_SVC="perf-gw"; fi
+          echo "Target service: ${GW_SVC}"
 
           kubectl run vegeta -n nantian-gw --image=peterevans/vegeta:latest --rm --attach --restart=Never -- \
-            sh -c 'echo "GET http://perf-gw.nantian-gw.svc/" | vegeta attack -duration=5m -rate=0 -max-workers=50 | vegeta report -type=json' \
+            sh -c "echo 'GET http://${GW_SVC}/' | vegeta attack -duration=5m -rate=0 -max-workers=50 | vegeta report -type=json" \
             > /tmp/vegeta-output.json 2>/tmp/vegeta-stderr.txt || true
 
           cat /tmp/vegeta-stderr.txt 2>/dev/null | tail -5 || true
@@ -406,9 +410,10 @@ jobs:
 
           CONFORMANCE="no data"
           if [[ -f "${RESULTS_DIR}/run.log" ]]; then
-            PASSED=$(grep -c "PASS" "${RESULTS_DIR}/run.log" || echo "0")
-            FAILED=$(grep -c "FAIL" "${RESULTS_DIR}/run.log" || echo "0")
-            CONFORMANCE="${PASSED} passed, ${FAILED} failed"
+            PASSED=$(grep -cE "^--- PASS:" "${RESULTS_DIR}/run.log" || echo "0")
+            FAILED=$(grep -cE "^--- FAIL:" "${RESULTS_DIR}/run.log" || echo "0")
+            SKIPPED=$(grep -cE "^    --- SKIP:" "${RESULTS_DIR}/run.log" || echo "0")
+            CONFORMANCE="${PASSED} passed, ${FAILED} failed, ${SKIPPED} skipped"
           fi
 
           PERF="no data"
