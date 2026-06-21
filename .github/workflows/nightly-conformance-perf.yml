@@ -197,7 +197,7 @@ jobs:
       - name: Collect baseline metrics
         run: |
           kubectl top pod perf-echo 2>/dev/null || echo "metrics not available yet"
-          echo "[]" > /tmp/cpu-mem-samples.json
+          : > /tmp/cpu-mem-samples.json
 
       - name: Start metrics collection (background)
         run: |
