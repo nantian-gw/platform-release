@@ -86,18 +86,46 @@ jobs:
         run: |
           mkdir -p dist/conformance
           report_path="dist/conformance/report.yaml"
+
+          args=(
+            -gateway-class nantian-gw
+            -report-output "$report_path"
+            -organization "Nantian Gateway"
+            -project "Nantian Gateway"
+            -url "https://github.com/nantian-gw/gateway"
+            -version nightly
+            -contact "https://github.com/nantian-gw/gateway/issues"
+          )
+
+          run_test() {
+            go test -tags=conformance -count=1 -v -timeout 30m ./conformance/ \
+              -args "${args[@]}" 2>&1
+          }
+
+          retry_failed() {
+            local log="$1"
+            grep -E '^    --- FAIL:' "$log" | sed 's/    --- FAIL: //' | sed 's/ (.*//' | while read -r t; do
+              echo "  Retrying: $t"
+              go test -tags=conformance -count=1 -v -timeout 10m ./conformance/ \
+                -run "$t" \
+                -args "${args[@]}" 2>&1
+            done
+          }
+
           set +e
-          go test -tags=conformance -count=1 -v -timeout 30m ./conformance/ \
-            -args \
-            -gateway-class nantian-gw \
-            -report-output "$report_path" \
-            -organization "Nantian Gateway" \
-            -project "Nantian Gateway" \
-            -url "https://github.com/nantian-gw/gateway" \
-            -version nightly \
-            -contact "https://github.com/nantian-gw/gateway/issues" 2>&1 \
-            | tee dist/conformance/run.log
-          status=${PIPESTATUS[0]}
+          run_test | tee dist/conformance/run.log
+          first_status=${PIPESTATUS[0]}
+
+          for attempt in 1 2; do
+            failed_count=$(grep -cE '^    --- FAIL:' dist/conformance/run.log 2>/dev/null || echo 0)
+            if [[ "$failed_count" -eq 0 ]]; then
+              break
+            fi
+            echo "=== Retry attempt $attempt ($failed_count failures) ===" | tee -a dist/conformance/run.log
+            retry_failed dist/conformance/run.log | tee -a dist/conformance/run.log
+          done
+
+          status=${first_status}
           echo "exit_code=${status}" >>"${GITHUB_OUTPUT}"
           exit 0
 
