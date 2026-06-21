@@ -183,14 +183,14 @@ jobs:
         run: |
           docker pull "${CONTROLPLANE_IMAGE}"
           docker pull "${DATAPLANE_IMAGE}"
-          docker pull nginx:alpine
+          docker pull gcr.io/k8s-staging-gateway-api/echo-basic:v20260204-monthly-2026.01-60-g28382302
           docker pull peterevans/vegeta:latest
 
       - name: Load images into kind
         run: |
           kind load docker-image "${CONTROLPLANE_IMAGE}" --name "${CLUSTER_NAME}"
           kind load docker-image "${DATAPLANE_IMAGE}" --name "${CLUSTER_NAME}"
-          kind load docker-image nginx:alpine --name "${CLUSTER_NAME}"
+          kind load docker-image gcr.io/k8s-staging-gateway-api/echo-basic:v20260204-monthly-2026.01-60-g28382302 --name "${CLUSTER_NAME}"
           kind load docker-image peterevans/vegeta:latest --name "${CLUSTER_NAME}"
 
       - name: Deploy Nantian Gateway
@@ -205,72 +205,54 @@ jobs:
           kubectl wait --for=condition=available --timeout=120s deployment -n nantian-gw --all
           kubectl get pods -n nantian-gw
 
-      - name: Deploy backend + Gateway + HTTPRoute
+      - name: Deploy backend + Gateway (multi-protocol)
         run: |
-          kubectl apply -f - <<'YAML'
+          ECHO="gcr.io/k8s-staging-gateway-api/echo-basic:v20260204-monthly-2026.01-60-g28382302"
+          kubectl apply -f - <<YAML
           apiVersion: v1
           kind: Pod
-          metadata:
-            name: perf-backend
-            namespace: nantian-gw
-            labels:
-              app: perf-backend
+          metadata: {name: perf-backend, namespace: nantian-gw, labels: {app: perf-backend}}
           spec:
             containers:
-            - name: nginx
-              image: nginx:alpine
-              ports:
-              - containerPort: 80
+            - {name: echo, image: "${ECHO}", ports: [{containerPort: 3000}, {containerPort: 7070}]}
           ---
           apiVersion: v1
           kind: Service
-          metadata:
-            name: perf-backend
-            namespace: nantian-gw
+          metadata: {name: perf-backend, namespace: nantian-gw}
           spec:
-            selector:
-              app: perf-backend
+            selector: {app: perf-backend}
             ports:
-            - port: 80
-              targetPort: 80
-          YAML
-          kubectl wait --for=condition=ready pod/perf-backend -n nantian-gw --timeout=60s
-
-          kubectl apply -f - <<'YAML'
+            - {name: http, port: 3000, targetPort: 3000}
+            - {name: grpc, port: 7070, targetPort: 7070}
+          ---
           apiVersion: gateway.networking.k8s.io/v1
           kind: Gateway
-          metadata:
-            name: perf-gw
-            namespace: nantian-gw
+          metadata: {name: perf-gw, namespace: nantian-gw}
           spec:
             gatewayClassName: nantian-gw
             listeners:
-            - name: http
-              port: 80
-              protocol: HTTP
+            - {name: http, port: 80,  protocol: HTTP}
+            - {name: grpc, port: 7070, protocol: HTTP, allowedRoutes: {kinds: [{kind: "GRPCRoute"}]}}
           ---
           apiVersion: gateway.networking.k8s.io/v1
           kind: HTTPRoute
-          metadata:
-            name: perf-route
-            namespace: nantian-gw
+          metadata: {name: perf-http, namespace: nantian-gw}
           spec:
-            parentRefs:
-            - name: perf-gw
-            rules:
-            - backendRefs:
-              - name: perf-backend
-                port: 80
+            parentRefs: [{name: perf-gw, sectionName: http}]
+            rules: [{backendRefs: [{name: perf-backend, port: 3000}]}]
+          ---
+          apiVersion: gateway.networking.k8s.io/v1
+          kind: GRPCRoute
+          metadata: {name: perf-grpc, namespace: nantian-gw}
+          spec:
+            parentRefs: [{name: perf-gw, sectionName: grpc}]
+            rules: [{backendRefs: [{name: perf-backend, port: 7070}]}]
           YAML
+          kubectl wait --for=condition=ready pod/perf-backend -n nantian-gw --timeout=60s
 
-          echo "Waiting for Gateway to be programmed..."
           for i in $(seq 1 30); do
-            STATUS=$(kubectl get gateway perf-gw -n nantian-gw -o json | jq -r '.status.conditions[]? | select(.type=="Programmed") | .status // ""')
-            if [[ "${STATUS}" == "True" ]]; then
-              echo "Gateway programmed!"
-              break
-            fi
-            sleep 2
+            S=$(kubectl get gateway perf-gw -n nantian-gw -o json | jq -r '.status.conditions[]? | select(.type=="Programmed") | .status // ""')
+            [[ "$S" == "True" ]] && break; sleep 2
           done
           kubectl get svc -n nantian-gw
 
