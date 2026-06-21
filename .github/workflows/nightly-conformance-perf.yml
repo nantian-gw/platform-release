@@ -107,7 +107,7 @@ jobs:
             grep -E '^    --- FAIL:' "$log" | sed 's/    --- FAIL: //' | sed 's/ (.*//' | while read -r t; do
               echo "  Retrying: $t"
               go test -tags=conformance -count=1 -v -timeout 10m ./conformance/ \
-                -run "$t" \
+                -run "^${t}$" \
                 -args "${args[@]}" 2>&1
             done
           }
