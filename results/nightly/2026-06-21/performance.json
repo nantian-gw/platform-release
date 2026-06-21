@@ -1,15 +1,15 @@
 {
   "tool": "vegeta",
   "duration_sec": 1800,
-  "total_requests": 10888343,
-  "rate_rps": 6048.953797219468,
+  "total_requests": 9270069,
+  "rate_rps": 5150.030865513911,
   "success_rate": 1,
   "latency": {
-    "p50_ms": 1394289,
-    "p95_ms": 53788834,
-    "p99_ms": 64007888,
-    "max_ms": 82628289,
-    "mean_ms": 6689775
+    "p50_ms": 1,
+    "p95_ms": 48,
+    "p99_ms": 56,
+    "max_ms": 83,
+    "mean_ms": 8
   },
   "cpu": {
     "avg_m": 0,
