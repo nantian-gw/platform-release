@@ -2,23 +2,23 @@
   "tool": "vegeta",
   "target": "dataplane via Gateway",
   "duration_sec": 300,
-  "total_requests": 7584891,
-  "rate_rps": 25282.958362085716,
-  "throughput_rps": 0,
-  "success_rate": 0,
-  "bytes_in": 0,
+  "total_requests": 3657942,
+  "rate_rps": 12193.141430824504,
+  "throughput_rps": 12192.99889083027,
+  "success_rate": 1,
+  "bytes_in": 3277516032,
   "bytes_out": 0,
   "status_codes": {
-  "0": 7584891
+  "200": 3657942
 },
   "latency": {
     "min_ms": 0,
-    "p50_ms": 1,
-    "p90_ms": 1,
-    "p95_ms": 2,
-    "p99_ms": 2,
-    "max_ms": 49,
-    "mean_ms": 1
+    "p50_ms": 2,
+    "p90_ms": 5,
+    "p95_ms": 6,
+    "p99_ms": 8,
+    "max_ms": 93,
+    "mean_ms": 2
   },
   "cpu": {
     "avg_m": 0,
