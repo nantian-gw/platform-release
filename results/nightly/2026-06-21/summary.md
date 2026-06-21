@@ -2,16 +2,16 @@
 
 | Test | Result |
 |------|--------|
-| Conformance | 666 passed, 6 failed, 4 skipped |
-| Performance | 5200671 req @ 8667.756179363992 RPS
+| Conformance | 621 passed, 11 failed, 4 skipped |
+| Performance | 5521818 req @ 9203.02885457569 RPS
 
 | Percentile | Latency |
 |-----------|---------|
 | p50       | 3ms |
 | p90       | 7ms |
 | p95       | 9ms |
-| p99       | 12ms |
-| max       | 132ms |
+| p99       | 13ms |
+| max       | 73ms |
 | mean      | 4ms | |
 
 Images tested:
