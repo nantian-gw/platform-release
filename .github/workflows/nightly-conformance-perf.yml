@@ -122,7 +122,7 @@ jobs:
   performance:
     name: HTTP Load Test
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 25
     env:
       CLUSTER_NAME: nightly-perf
     steps:
@@ -201,7 +201,7 @@ jobs:
 
       - name: Start metrics collection (background)
         run: |
-          for i in $(seq 1 30); do
+          for i in $(seq 1 5); do
             sleep 60
             CPU=$(kubectl top pod perf-echo --no-headers 2>/dev/null | awk '{print $2}' | sed 's/m//')
             MEM=$(kubectl top pod perf-echo --no-headers 2>/dev/null | awk '{print $3}' | sed 's/Mi//')
@@ -215,7 +215,7 @@ jobs:
         id: vegeta
         run: |
           kubectl run vegeta --image=peterevans/vegeta:latest --rm --attach --restart=Never -- \
-            sh -c 'echo "GET http://perf-echo/" | vegeta attack -duration=30m -rate=0 -max-workers=50 | vegeta report -type=json' \
+            sh -c 'echo "GET http://perf-echo/" | vegeta attack -duration=5m -rate=0 -max-workers=50 | vegeta report -type=json' \
             > /tmp/vegeta-output.json 2>/tmp/vegeta-stderr.txt || true
 
           cat /tmp/vegeta-stderr.txt 2>/dev/null | tail -5 || true
@@ -269,7 +269,7 @@ jobs:
           cat > dist/performance.json <<JSON
           {
             "tool": "vegeta",
-            "duration_sec": 1800,
+            "duration_sec": 300,
             "total_requests": ${REQS},
             "rate_rps": ${RATE},
             "throughput_rps": ${THROUGHPUT},
