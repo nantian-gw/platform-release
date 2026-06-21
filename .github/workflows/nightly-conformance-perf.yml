@@ -121,7 +121,7 @@ jobs:
   performance:
     name: Dataplane Load Test
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     env:
       CLUSTER_NAME: nightly-perf
     steps:
@@ -249,7 +249,7 @@ jobs:
 
       - name: Start metrics collection (background)
         run: |
-          for i in $(seq 1 5); do
+          for i in $(seq 1 10); do
             sleep 60
             DATA=$(kubectl top pod -n nantian-gw --no-headers 2>/dev/null | grep dataplane | awk '{print $2,$3}')
             CPU=$(echo "$DATA" | awk '{print $1}' | sed 's/m//')
@@ -273,7 +273,7 @@ jobs:
           echo "Target service: ${GW_SVC}"
 
           kubectl run vegeta -n nantian-gw --image=peterevans/vegeta:latest --rm --attach --restart=Never -- \
-            sh -c "echo 'GET http://${GW_SVC}/' | vegeta attack -duration=5m -rate=0 -max-workers=50 | vegeta report -type=json" \
+            sh -c "echo 'GET http://${GW_SVC}/' | vegeta attack -duration=10m -rate=0 -max-workers=50 | vegeta report -type=json" \
             > /tmp/vegeta-output.json 2>/tmp/vegeta-stderr.txt || true
 
           cat /tmp/vegeta-stderr.txt 2>/dev/null | tail -5 || true
@@ -324,7 +324,7 @@ jobs:
           {
             "tool": "vegeta",
             "target": "dataplane via Gateway",
-            "duration_sec": 300,
+            "duration_sec": 600,
             "total_requests": ${REQS},
             "rate_rps": ${RATE},
             "throughput_rps": ${THROUGHPUT},
