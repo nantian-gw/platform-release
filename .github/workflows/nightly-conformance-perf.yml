@@ -410,9 +410,9 @@ jobs:
 
           CONFORMANCE="no data"
           if [[ -f "${RESULTS_DIR}/run.log" ]]; then
-            PASSED=$(grep -cE "^--- PASS:" "${RESULTS_DIR}/run.log" || echo "0")
-            FAILED=$(grep -cE "^--- FAIL:" "${RESULTS_DIR}/run.log" || echo "0")
-            SKIPPED=$(grep -cE "^    --- SKIP:" "${RESULTS_DIR}/run.log" || echo "0")
+            PASSED=$(grep -cE -- "--- PASS:" "${RESULTS_DIR}/run.log" || echo "0")
+            FAILED=$(grep -cE -- "--- FAIL:" "${RESULTS_DIR}/run.log" || echo "0")
+            SKIPPED=$(grep -cE -- "--- SKIP:" "${RESULTS_DIR}/run.log" || echo "0")
             CONFORMANCE="${PASSED} passed, ${FAILED} failed, ${SKIPPED} skipped"
           fi
 
