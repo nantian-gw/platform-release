@@ -1,22 +1,22 @@
 {
   "tool": "vegeta",
   "duration_sec": 1800,
-  "total_requests": 10977329,
-  "rate_rps": 6098.465834792967,
-  "throughput_rps": 6098.459637176037,
+  "total_requests": 10964368,
+  "rate_rps": 6091.297543274003,
+  "throughput_rps": 6091.290893306189,
   "success_rate": 1,
-  "bytes_in": 9835686784,
+  "bytes_in": 9824073728,
   "bytes_out": 0,
   "status_codes": {
-  "200": 10977329
+  "200": 10964368
 },
   "latency": {
     "min_ms": 0,
     "p50_ms": 1,
-    "p90_ms": 31,
-    "p95_ms": 36,
-    "p99_ms": 43,
-    "max_ms": 82,
+    "p90_ms": 21,
+    "p95_ms": 49,
+    "p99_ms": 60,
+    "max_ms": 84,
     "mean_ms": 6
   },
   "cpu": {

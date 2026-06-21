@@ -3,15 +3,15 @@
 | Test | Result |
 |------|--------|
 | Conformance | 476 passed, 4 failed |
-| Performance | 10977329 req @ 6098.465834792967 RPS
+| Performance | 10964368 req @ 6091.297543274003 RPS
 
 | Percentile | Latency |
 |-----------|---------|
 | p50       | 1ms |
-| p90       | 31ms |
-| p95       | 36ms |
-| p99       | 43ms |
-| max       | 82ms |
+| p90       | 21ms |
+| p95       | 49ms |
+| p99       | 60ms |
+| max       | 84ms |
 | mean      | 6ms | |
 
 Images tested:
