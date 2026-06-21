@@ -83,7 +83,7 @@ jobs:
         working-directory: gateway
         run: |
           mkdir -p dist/conformance
-          report_path="${GITHUB_WORKSPACE}/dist/conformance/report.yaml"
+          report_path="dist/conformance/report.yaml"
           set +e
           go test -tags=conformance -count=1 -v -timeout 30m ./conformance/ \
             -args \
@@ -234,11 +234,11 @@ jobs:
             REQS=$(jq -r '.requests // 0' /tmp/vegeta-output.json)
             RATE=$(jq -r '.rate // 0' /tmp/vegeta-output.json)
             SUCCESS=$(jq -r '.success // 0' /tmp/vegeta-output.json)
-            P50=$(jq -r '.latencies."50th" // 0' /tmp/vegeta-output.json)
-            P95=$(jq -r '.latencies."95th" // 0' /tmp/vegeta-output.json)
-            P99=$(jq -r '.latencies."99th" // 0' /tmp/vegeta-output.json)
-            MAX=$(jq -r '.latencies.max // 0' /tmp/vegeta-output.json)
-            MEAN=$(jq -r '.latencies.mean // 0' /tmp/vegeta-output.json)
+            P50=$(jq -r '(.latencies."50th" // 0) / 1000000 | floor' /tmp/vegeta-output.json)
+            P95=$(jq -r '(.latencies."95th" // 0) / 1000000 | floor' /tmp/vegeta-output.json)
+            P99=$(jq -r '(.latencies."99th" // 0) / 1000000 | floor' /tmp/vegeta-output.json)
+            MAX=$(jq -r '(.latencies.max // 0) / 1000000 | floor' /tmp/vegeta-output.json)
+            MEAN=$(jq -r '(.latencies.mean // 0) / 1000000 | floor' /tmp/vegeta-output.json)
           else
             REQS=0; RATE=0; SUCCESS=0; P50=0; P95=0; P99=0; MAX=0; MEAN=0
           fi
@@ -329,8 +329,8 @@ jobs:
 
           PERF="no data"
           if [[ -f "${RESULTS_DIR}/performance.json" ]]; then
-            RPS=$(jq -r '.requests_per_second // "N/A"' "${RESULTS_DIR}/performance.json")
-            P95=$(jq -r '.latency_p95_ms // "N/A"' "${RESULTS_DIR}/performance.json")
+            RPS=$(jq -r '.rate_rps // "N/A"' "${RESULTS_DIR}/performance.json")
+            P95=$(jq -r '.latency.p95_ms // "N/A"' "${RESULTS_DIR}/performance.json")
             PERF="RPS: ${RPS}, P95: ${P95}ms"
           fi
 
