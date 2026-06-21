@@ -268,8 +268,8 @@ jobs:
           echo "=== Endpoints ==="
           kubectl get endpoints -n nantian-gw
 
-          GW_SVC=$(kubectl get svc -n nantian-gw -o json | jq -r '.items[] | select(.metadata.name | startswith("perf-gw")) | .metadata.name' | head -1)
-          if [[ -z "${GW_SVC}" ]]; then GW_SVC="perf-gw"; fi
+          GW_SVC=$(kubectl get svc -n nantian-gw -o json | jq -r '.items[] | select(.metadata.name | test("perf-gw")) | .metadata.name' | head -1)
+          if [[ -z "${GW_SVC}" || "${GW_SVC}" == "null" ]]; then GW_SVC="nantian-gw-perf-gw"; fi
           echo "Target service: ${GW_SVC}"
 
           kubectl run vegeta -n nantian-gw --image=peterevans/vegeta:latest --rm --attach --restart=Never -- \
