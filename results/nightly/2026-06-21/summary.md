@@ -2,18 +2,17 @@
 
 | Test | Result |
 |------|--------|
-| Conformance | 590 passed, 0
-0 failed, 26 skipped |
-| Performance | 4560568 req @ 7600.940858889103 RPS
+| Conformance | 507 passed, 8 failed, 26 skipped |
+| Performance | 4682633 req @ 7804.38972117495 RPS
 
 | Percentile | Latency |
 |-----------|---------|
 | p50       | 4ms |
 | p90       | 8ms |
 | p95       | 10ms |
-| p99       | 14ms |
-| max       | 100ms |
-| mean      | 5ms | |
+| p99       | 13ms |
+| max       | 225ms |
+| mean      | 4ms | |
 
 Images tested:
 - Control Plane: ghcr.io/nantian-gw/nantian-controlplane:latest
