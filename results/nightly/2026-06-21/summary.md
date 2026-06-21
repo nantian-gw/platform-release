@@ -2,16 +2,16 @@
 
 | Test | Result |
 |------|--------|
-| Conformance | 563 passed, 9 failed, 4 skipped |
-| Performance | 5120008 req @ 8533.345776524924 RPS
+| Conformance | 652 passed, 8 failed, 4 skipped |
+| Performance | 4998463 req @ 8330.759508478548 RPS
 
 | Percentile | Latency |
 |-----------|---------|
 | p50       | 4ms |
-| p90       | 7ms |
+| p90       | 8ms |
 | p95       | 9ms |
-| p99       | 12ms |
-| max       | 733ms |
+| p99       | 13ms |
+| max       | 416ms |
 | mean      | 4ms | |
 
 Images tested:
@@ -19,7 +19,7 @@ Images tested:
 - Data Plane: ghcr.io/nantian-gw/dataplane:latest
 
 ## Raw Data Files
-- `report.yaml` — Gateway API conformance report
 - `run.log` — Full conformance test output
 - `performance.json` — Vegeta dataplane load test summary
 - `vegeta-raw.json` — Raw vegeta latency distribution
+
