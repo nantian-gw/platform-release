@@ -150,6 +150,8 @@ jobs:
 
   performance:
     name: Dataplane Load Test
+    needs: conformance
+    if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -277,20 +279,7 @@ jobs:
           kubectl top pod -n nantian-gw 2>/dev/null || echo "metrics not available"
           : > /tmp/cpu-mem-samples.json
 
-      - name: Start metrics collection (background)
-        run: |
-          for i in $(seq 1 10); do
-            sleep 60
-            DATA=$(kubectl top pod -n nantian-gw --no-headers 2>/dev/null | grep dataplane | awk '{print $2,$3}')
-            CPU=$(echo "$DATA" | awk '{print $1}' | sed 's/m//')
-            MEM=$(echo "$DATA" | awk '{print $2}' | sed 's/Mi//')
-            if [[ -n "${CPU}" ]]; then
-              echo "t=${i}min cpu=${CPU}m mem=${MEM}Mi"
-              echo "{\"minute\":$i,\"cpu_m\":${CPU:-0},\"mem_mi\":${MEM:-0}}," >> /tmp/cpu-mem-samples.json
-            fi
-          done &
-
-      - name: Run vegeta 5-min load test through dataplane
+      - name: Run vegeta warmup and 10-min measured load through dataplane
         id: vegeta
         run: |
           echo "=== Services ==="
@@ -302,17 +291,38 @@ jobs:
           if [[ -z "${GW_SVC}" || "${GW_SVC}" == "null" ]]; then GW_SVC="nantian-gw-perf-gw"; fi
           echo "Target service: ${GW_SVC}"
 
+          : > /tmp/cpu-mem-samples.json
+          (
+            for i in $(seq 0 11); do
+              sleep 60
+              DATA=$(kubectl top pod -n nantian-gw --no-headers 2>/dev/null | awk '/dataplane/ {print $2,$3; exit}')
+              CPU=$(echo "$DATA" | awk '{print $1}' | sed 's/m//')
+              MEM=$(echo "$DATA" | awk '{print $2}' | sed 's/Mi//')
+              if [[ -n "${CPU}" ]]; then
+                echo "t=${i}min cpu=${CPU}m mem=${MEM}Mi"
+                echo "{\"minute\":$i,\"cpu_m\":${CPU:-0},\"mem_mi\":${MEM:-0}}," >> /tmp/cpu-mem-samples.json
+              fi
+            done
+          ) &
+          METRICS_PID=$!
+
           kubectl run vegeta -n nantian-gw --image=peterevans/vegeta:latest --rm --attach --restart=Never -- \
-            sh -c "echo 'GET http://${GW_SVC}/' | vegeta attack -duration=10m -rate=0 -max-workers=50 | vegeta report -type=json" \
+            sh -c "printf 'GET http://${GW_SVC}/\n' > /tmp/targets && \
+              echo 'Warmup: 60s' >&2 && \
+              vegeta attack -duration=60s -rate=0 -max-workers=50 -targets=/tmp/targets >/tmp/vegeta-warmup.bin && \
+              vegeta report /tmp/vegeta-warmup.bin >&2 && \
+              echo 'Measurement: 10m' >&2 && \
+              vegeta attack -duration=10m -rate=0 -max-workers=50 -targets=/tmp/targets | vegeta report -type=json" \
             > /tmp/vegeta-output.json 2>/tmp/vegeta-stderr.txt || true
+
+          kill "${METRICS_PID}" 2>/dev/null || true
+          wait "${METRICS_PID}" 2>/dev/null || true
 
           cat /tmp/vegeta-stderr.txt 2>/dev/null | tail -5 || true
           grep '^{' /tmp/vegeta-output.json > /tmp/vegeta-clean.json 2>/dev/null || true
 
       - name: Merge results
         run: |
-          wait || true
-
           set +e
           SAMPLES=$(cat /tmp/cpu-mem-samples.json 2>/dev/null | sed '$ s/,$//')
           if [[ -z "${SAMPLES}" ]]; then
@@ -354,6 +364,8 @@ jobs:
           {
             "tool": "vegeta",
             "target": "dataplane via Gateway",
+            "warmup_sec": 60,
+            "measurement_sec": 600,
             "duration_sec": 600,
             "total_requests": ${REQS},
             "rate_rps": ${RATE},
@@ -438,6 +450,22 @@ jobs:
             cp "${RAW_VEGETA}" "${RESULTS_DIR}/vegeta-raw.json"
           fi
 
+          raw_files=""
+          append_raw_file() {
+            local file="$1"
+            local description="$2"
+            if [[ -f "${RESULTS_DIR}/${file}" ]]; then
+              raw_files="${raw_files}- \`${file}\` — ${description}"$'\n'
+            fi
+          }
+          append_raw_file "report.yaml" "Gateway API conformance report"
+          append_raw_file "run.log" "Full conformance test output"
+          append_raw_file "performance.json" "Vegeta dataplane load test summary"
+          append_raw_file "vegeta-raw.json" "Raw vegeta latency distribution"
+          if [[ -z "${raw_files}" ]]; then
+            raw_files="- No raw data files were produced"$'\n'
+          fi
+
           CONFORMANCE="no data"
           if [[ -f "${RESULTS_DIR}/run.log" ]]; then
             PASSED=$(grep -c -- '--- PASS:' "${RESULTS_DIR}/run.log" || echo "0")
@@ -481,10 +509,7 @@ jobs:
           - Data Plane: ${DATAPLANE_IMAGE}
 
           ## Raw Data Files
-          - \`report.yaml\` — Gateway API conformance report
-          - \`run.log\` — Full conformance test output
-          - \`performance.json\` — Vegeta dataplane load test summary
-          - \`vegeta-raw.json\` — Raw vegeta latency distribution
+          ${raw_files}
           EOF
 
           cat "${RESULTS_DIR}/summary.md"
