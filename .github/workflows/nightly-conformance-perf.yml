@@ -97,7 +97,6 @@ jobs:
             | tee dist/conformance/run.log
           status=${PIPESTATUS[0]}
           echo "exit_code=${status}" >>"${GITHUB_OUTPUT}"
-          # Nightly workflow: record results, don't fail the job on test failures
           exit 0
 
       - name: Collect diagnostics on failure
@@ -120,7 +119,7 @@ jobs:
         run: command -v kind >/dev/null 2>&1 && kind delete cluster --name "$CLUSTER_NAME" || true
 
   performance:
-    name: HTTP Load Test
+    name: Dataplane Load Test
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -142,7 +141,7 @@ jobs:
 
       - name: Create kind cluster
         working-directory: gateway
-        run: GATEWAY_API_CRDS_SKIP=true scripts/ci/create-kind-cluster.sh
+        run: scripts/ci/create-kind-cluster.sh
 
       - name: Install Gateway API CRDs
         working-directory: gateway
@@ -150,85 +149,136 @@ jobs:
 
       - name: Pull images
         run: |
+          docker pull "${CONTROLPLANE_IMAGE}"
+          docker pull "${DATAPLANE_IMAGE}"
           docker pull nginx:alpine
           docker pull peterevans/vegeta:latest
 
       - name: Load images into kind
         run: |
+          kind load docker-image "${CONTROLPLANE_IMAGE}" --name "${CLUSTER_NAME}"
+          kind load docker-image "${DATAPLANE_IMAGE}" --name "${CLUSTER_NAME}"
           kind load docker-image nginx:alpine --name "${CLUSTER_NAME}"
           kind load docker-image peterevans/vegeta:latest --name "${CLUSTER_NAME}"
 
-      - name: Deploy echo server
+      - name: Deploy Nantian Gateway
+        working-directory: gateway
+        env:
+          KIND_DATAPLANE_IMAGE: ${{ env.DATAPLANE_IMAGE }}
+          KIND_DASHBOARD_IMAGE: ${{ env.DASHBOARD_IMAGE }}
+        run: scripts/ci/deploy-kind-conformance.sh
+
+      - name: Wait for gateway readiness
+        run: |
+          kubectl wait --for=condition=available --timeout=120s deployment -n nantian-gw --all
+          kubectl get pods -n nantian-gw
+
+      - name: Deploy backend + Gateway + HTTPRoute
         run: |
           kubectl apply -f - <<'YAML'
           apiVersion: v1
           kind: Pod
           metadata:
-            name: perf-echo
+            name: perf-backend
+            namespace: nantian-gw
             labels:
-              app: perf-echo
+              app: perf-backend
           spec:
             containers:
             - name: nginx
               image: nginx:alpine
-              resources:
-                requests:
-                  cpu: 100m
-                  memory: 64Mi
-                limits:
-                  cpu: 500m
-                  memory: 128Mi
               ports:
               - containerPort: 80
           ---
           apiVersion: v1
           kind: Service
           metadata:
-            name: perf-echo
+            name: perf-backend
+            namespace: nantian-gw
           spec:
             selector:
-              app: perf-echo
+              app: perf-backend
             ports:
             - port: 80
               targetPort: 80
           YAML
-          kubectl wait --for=condition=ready pod/perf-echo --timeout=60s
+          kubectl wait --for=condition=ready pod/perf-backend -n nantian-gw --timeout=60s
+
+          kubectl apply -f - <<'YAML'
+          apiVersion: gateway.networking.k8s.io/v1
+          kind: Gateway
+          metadata:
+            name: perf-gw
+            namespace: nantian-gw
+          spec:
+            gatewayClassName: nantian-gw
+            listeners:
+            - name: http
+              port: 80
+              protocol: HTTP
+          ---
+          apiVersion: gateway.networking.k8s.io/v1
+          kind: HTTPRoute
+          metadata:
+            name: perf-route
+            namespace: nantian-gw
+          spec:
+            parentRefs:
+            - name: perf-gw
+            rules:
+            - backendRefs:
+              - name: perf-backend
+                port: 80
+          YAML
+
+          echo "Waiting for Gateway to be programmed..."
+          for i in $(seq 1 30); do
+            STATUS=$(kubectl get gateway perf-gw -n nantian-gw -o json | jq -r '.status.conditions[]? | select(.type=="Programmed") | .status // ""')
+            if [[ "${STATUS}" == "True" ]]; then
+              echo "Gateway programmed!"
+              break
+            fi
+            sleep 2
+          done
+          kubectl get svc -n nantian-gw
 
       - name: Collect baseline metrics
         run: |
-          kubectl top pod perf-echo 2>/dev/null || echo "metrics not available yet"
+          kubectl top pod -n nantian-gw 2>/dev/null || echo "metrics not available"
           : > /tmp/cpu-mem-samples.json
 
       - name: Start metrics collection (background)
         run: |
           for i in $(seq 1 5); do
             sleep 60
-            CPU=$(kubectl top pod perf-echo --no-headers 2>/dev/null | awk '{print $2}' | sed 's/m//')
-            MEM=$(kubectl top pod perf-echo --no-headers 2>/dev/null | awk '{print $3}' | sed 's/Mi//')
+            DATA=$(kubectl top pod -n nantian-gw --no-headers 2>/dev/null | grep dataplane | awk '{print $2,$3}')
+            CPU=$(echo "$DATA" | awk '{print $1}' | sed 's/m//')
+            MEM=$(echo "$DATA" | awk '{print $2}' | sed 's/Mi//')
             if [[ -n "${CPU}" ]]; then
               echo "t=${i}min cpu=${CPU}m mem=${MEM}Mi"
               echo "{\"minute\":$i,\"cpu_m\":${CPU:-0},\"mem_mi\":${MEM:-0}}," >> /tmp/cpu-mem-samples.json
             fi
           done &
 
-      - name: Run vegeta 30-minute load test
+      - name: Run vegeta 5-min load test through dataplane
         id: vegeta
         run: |
-          kubectl run vegeta --image=peterevans/vegeta:latest --rm --attach --restart=Never -- \
-            sh -c 'echo "GET http://perf-echo/" | vegeta attack -duration=5m -rate=0 -max-workers=50 | vegeta report -type=json' \
+          echo "=== Services ==="
+          kubectl get svc -n nantian-gw
+          echo "=== Gateways ==="
+          kubectl get gateway -A
+
+          kubectl run vegeta -n nantian-gw --image=peterevans/vegeta:latest --rm --attach --restart=Never -- \
+            sh -c 'echo "GET http://perf-gw.nantian-gw.svc/" | vegeta attack -duration=5m -rate=0 -max-workers=50 | vegeta report -type=json' \
             > /tmp/vegeta-output.json 2>/tmp/vegeta-stderr.txt || true
 
           cat /tmp/vegeta-stderr.txt 2>/dev/null | tail -5 || true
-          cat /tmp/vegeta-output.json | grep '^{' | head -5
-
-      - name: Clean vegeta raw output
-        run: grep '^{' /tmp/vegeta-output.json > /tmp/vegeta-clean.json 2>/dev/null || true
+          grep '^{' /tmp/vegeta-output.json > /tmp/vegeta-clean.json 2>/dev/null || true
 
       - name: Merge results
         run: |
           wait || true
 
-          # Extract metrics (best-effort, don't fail on parse errors)
           set +e
           SAMPLES=$(cat /tmp/cpu-mem-samples.json 2>/dev/null | sed '$ s/,$//')
           if [[ -z "${SAMPLES}" ]]; then
@@ -269,6 +319,7 @@ jobs:
           cat > dist/performance.json <<JSON
           {
             "tool": "vegeta",
+            "target": "dataplane via Gateway",
             "duration_sec": 300,
             "total_requests": ${REQS},
             "rate_rps": ${RATE},
@@ -300,7 +351,6 @@ jobs:
 
           cat dist/performance.json
 
-          # Save raw vegeta output for full data archive
           if [[ -s /tmp/vegeta-clean.json ]]; then
             cp /tmp/vegeta-clean.json dist/vegeta-raw.json
           fi
@@ -339,7 +389,6 @@ jobs:
           RESULTS_DIR="results/nightly/${DATE}"
           mkdir -p "${RESULTS_DIR}"
 
-          # Copy ALL raw data from artifacts
           if [[ -d artifacts/conformance-results ]]; then
             find artifacts/conformance-results -type f -name '*.yaml' -o -name '*.log' | while read f; do
               cp "$f" "${RESULTS_DIR}/$(basename "$f")" 2>/dev/null || true
@@ -355,7 +404,6 @@ jobs:
             cp "${RAW_VEGETA}" "${RESULTS_DIR}/vegeta-raw.json"
           fi
 
-          # Build summary from raw data
           CONFORMANCE="no data"
           if [[ -f "${RESULTS_DIR}/run.log" ]]; then
             PASSED=$(grep -c "PASS" "${RESULTS_DIR}/run.log" || echo "0")
@@ -400,7 +448,7 @@ jobs:
           ## Raw Data Files
           - \`report.yaml\` — Gateway API conformance report
           - \`run.log\` — Full conformance test output
-          - \`performance.json\` — Vegeta load test summary
+          - \`performance.json\` — Vegeta dataplane load test summary
           - \`vegeta-raw.json\` — Raw vegeta latency distribution
           EOF
 
