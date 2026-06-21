@@ -316,11 +316,7 @@ jobs:
           RESULTS_DIR="results/nightly/${DATE}"
           mkdir -p "${RESULTS_DIR}"
 
-          # Debug: show artifact contents
-          echo "=== conformance artifact ==="
-          find artifacts/conformance-results -type f 2>/dev/null | head -20 || echo "(empty)"
-          echo "=== performance artifact ==="
-          find artifacts/performance-results -type f 2>/dev/null | head -20 || echo "(empty)"
+          # Copy ALL raw data from artifacts
           if [[ -d artifacts/conformance-results ]]; then
             find artifacts/conformance-results -type f -name '*.yaml' -o -name '*.log' | while read f; do
               cp "$f" "${RESULTS_DIR}/$(basename "$f")" 2>/dev/null || true
