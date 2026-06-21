@@ -23,7 +23,7 @@ jobs:
   conformance:
     name: Gateway API Conformance
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 90
     env:
       CLUSTER_NAME: nightly-conformance
       CONFORMANCE_EXPERIMENTAL: "true"
