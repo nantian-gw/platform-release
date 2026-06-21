@@ -277,12 +277,19 @@ jobs:
 
           cat dist/performance.json
 
+          # Save raw vegeta output for full data archive
+          if [[ -s /tmp/vegeta-output.json ]]; then
+            cp /tmp/vegeta-output.json dist/vegeta-raw.json
+          fi
+
       - name: Upload performance artifact
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: performance-results
-          path: dist/performance.json
+          path: |
+            dist/performance.json
+            dist/vegeta-raw.json
           if-no-files-found: warn
 
       - name: Cleanup
@@ -309,21 +316,26 @@ jobs:
           RESULTS_DIR="results/nightly/${DATE}"
           mkdir -p "${RESULTS_DIR}"
 
+          # Copy ALL raw data from artifacts
           CONFORMANCE_DIR="artifacts/conformance-results/gateway/dist/conformance"
-
-          if [[ -f "${CONFORMANCE_DIR}/report.yaml" ]]; then
-            cp "${CONFORMANCE_DIR}/report.yaml" "${RESULTS_DIR}/conformance-report.yaml"
+          if [[ -d "${CONFORMANCE_DIR}" ]]; then
+            cp -r "${CONFORMANCE_DIR}/." "${RESULTS_DIR}/" 2>/dev/null || true
           fi
 
           PERF_FILE=$(find artifacts/performance-results -name performance.json 2>/dev/null | head -1)
           if [[ -n "${PERF_FILE}" && -f "${PERF_FILE}" ]]; then
             cp "${PERF_FILE}" "${RESULTS_DIR}/performance.json"
           fi
+          RAW_VEGETA=$(find artifacts/performance-results -name vegeta-raw.json 2>/dev/null | head -1)
+          if [[ -n "${RAW_VEGETA}" && -f "${RAW_VEGETA}" ]]; then
+            cp "${RAW_VEGETA}" "${RESULTS_DIR}/vegeta-raw.json"
+          fi
 
+          # Build summary from raw data
           CONFORMANCE="no data"
-          if [[ -f "${CONFORMANCE_DIR}/run.log" ]]; then
-            PASSED=$(grep -c "PASS" "${CONFORMANCE_DIR}/run.log" || echo "0")
-            FAILED=$(grep -c "FAIL" "${CONFORMANCE_DIR}/run.log" || echo "0")
+          if [[ -f "${RESULTS_DIR}/run.log" ]]; then
+            PASSED=$(grep -c "PASS" "${RESULTS_DIR}/run.log" || echo "0")
+            FAILED=$(grep -c "FAIL" "${RESULTS_DIR}/run.log" || echo "0")
             CONFORMANCE="${PASSED} passed, ${FAILED} failed"
           fi
 
@@ -331,7 +343,8 @@ jobs:
           if [[ -f "${RESULTS_DIR}/performance.json" ]]; then
             RPS=$(jq -r '.rate_rps // "N/A"' "${RESULTS_DIR}/performance.json")
             P95=$(jq -r '.latency.p95_ms // "N/A"' "${RESULTS_DIR}/performance.json")
-            PERF="RPS: ${RPS}, P95: ${P95}ms"
+            TOTAL=$(jq -r '.total_requests // "N/A"' "${RESULTS_DIR}/performance.json")
+            PERF="${TOTAL} req, ${RPS} RPS, P95=${P95}ms"
           fi
 
           cat > "${RESULTS_DIR}/summary.md" <<EOF
@@ -345,6 +358,12 @@ jobs:
           Images tested:
           - Control Plane: ${CONTROLPLANE_IMAGE}
           - Data Plane: ${DATAPLANE_IMAGE}
+
+          ## Raw Data Files
+          - \`report.yaml\` — Gateway API conformance report
+          - \`run.log\` — Full conformance test output
+          - \`performance.json\` — Vegeta load test summary
+          - \`vegeta-raw.json\` — Raw vegeta latency distribution
           EOF
 
           cat "${RESULTS_DIR}/summary.md"
