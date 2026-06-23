@@ -54,6 +54,3 @@ python_bin="${PYTHON_BIN:-${repo_root}/.venv/bin/python3}"
   --repo-root "${repo_root}" \
   --candidate "${candidate}" \
   --final "${final}"
-  --repo-root "${repo_root}" \
-  --candidate "$1" \
-  --final "$2"
