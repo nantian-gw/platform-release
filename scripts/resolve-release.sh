@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+tmp="$(mktemp -d)"
+trap 'rm -rf "${tmp}"' EXIT
+
 if [[ $# -ne 1 ]]; then
   echo "usage: $0 <platform-version>" >&2
   exit 1
@@ -83,17 +86,17 @@ dashboard_commit=""
 website_commit=""
 helm_charts_commit=""
 
-resolve_commit "${gateway_repo}" "${GATEWAY_TAG}" >/tmp/gateway_commit &
+resolve_commit "${gateway_repo}" "${GATEWAY_TAG}" >"${tmp}/gateway_commit" &
 pid_gateway=$!
-resolve_commit "${dataplane_repo}" "${DATAPLANE_TAG}" >/tmp/dataplane_commit &
+resolve_commit "${dataplane_repo}" "${DATAPLANE_TAG}" >"${tmp}/dataplane_commit" &
 pid_dataplane=$!
-resolve_commit "${proto_repo}" "${PROTO_TAG}" >/tmp/proto_commit &
+resolve_commit "${proto_repo}" "${PROTO_TAG}" >"${tmp}/proto_commit" &
 pid_proto=$!
-resolve_commit "${dashboard_repo}" "${DASHBOARD_TAG}" >/tmp/dashboard_commit &
+resolve_commit "${dashboard_repo}" "${DASHBOARD_TAG}" >"${tmp}/dashboard_commit" &
 pid_dashboard=$!
-resolve_commit "${website_repo}" "${WEBSITE_TAG}" >/tmp/website_commit &
+resolve_commit "${website_repo}" "${WEBSITE_TAG}" >"${tmp}/website_commit" &
 pid_website=$!
-resolve_commit "${helm_charts_repo}" "${HELM_CHARTS_TAG}" >/tmp/helm_charts_commit &
+resolve_commit "${helm_charts_repo}" "${HELM_CHARTS_TAG}" >"${tmp}/helm_charts_commit" &
 pid_helm=$!
 
 failed=false
@@ -107,12 +110,12 @@ if [[ "${failed}" == "true" ]]; then
   exit 1
 fi
 
-gateway_commit="$(cat /tmp/gateway_commit)"
-dataplane_commit="$(cat /tmp/dataplane_commit)"
-proto_commit="$(cat /tmp/proto_commit)"
-dashboard_commit="$(cat /tmp/dashboard_commit)"
-website_commit="$(cat /tmp/website_commit)"
-helm_charts_commit="$(cat /tmp/helm_charts_commit)"
+gateway_commit="$(cat "${tmp}/gateway_commit")"
+dataplane_commit="$(cat "${tmp}/dataplane_commit")"
+proto_commit="$(cat "${tmp}/proto_commit")"
+dashboard_commit="$(cat "${tmp}/dashboard_commit")"
+website_commit="$(cat "${tmp}/website_commit")"
+helm_charts_commit="$(cat "${tmp}/helm_charts_commit")"
 
 release_date="$(date -u +%F)"
 
