@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 import jsonschema
@@ -14,13 +15,24 @@ import yaml
 CANONICAL_CHART_REPO = "https://chart.nantian.dev"
 
 
+def atomic_write_text(path: Path, content: str, encoding: str = "utf-8") -> None:
+    """Write content atomically to path using temp file + rename."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}-", suffix=".tmp")
+    try:
+        os.write(fd, content.encode(encoding))
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    os.replace(tmp_path, path)
+
+
 def load_yaml(path: Path) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
 def dump_yaml(path: Path, payload: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+    atomic_write_text(path, yaml.safe_dump(payload, sort_keys=False))
 
 
 def load_schema(path: Path) -> dict:
@@ -230,7 +242,7 @@ def render_results(summary_path: Path, matrix_path: Path, conformance_path: Path
     for name, payload in summary["checks"].items():
         matrix_lines.append(f"| {name} | {payload['status']} |")
     matrix_path.parent.mkdir(parents=True, exist_ok=True)
-    matrix_path.write_text("\n".join(matrix_lines) + "\n", encoding="utf-8")
+    atomic_write_text(matrix_path, "\n".join(matrix_lines) + "\n")
 
     conformance_state = summary["checks"].get("gateway-api-conformance", {"status": "pending"})["status"]
     conformance_lines = [
@@ -240,7 +252,7 @@ def render_results(summary_path: Path, matrix_path: Path, conformance_path: Path
         "",
         "See `summary.yaml` and linked external artifacts for the raw evidence.",
     ]
-    conformance_path.write_text("\n".join(conformance_lines) + "\n", encoding="utf-8")
+    atomic_write_text(conformance_path, "\n".join(conformance_lines) + "\n")
 
     artifacts_index = {
         "githubRun": summary.get("artifacts", {}).get("githubRun", ""),
