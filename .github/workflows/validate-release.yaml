@@ -10,10 +10,10 @@ jobs:
   unit-tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with:
           python-version: "3.12"
       - name: Install dependencies
@@ -26,7 +26,7 @@ jobs:
     needs:
       - unit-tests
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
           fetch-depth: 0
       - name: Detect changed release manifests
@@ -64,30 +64,30 @@ jobs:
             printf '%s\n' "${manifests[@]}"
             echo "EOF"
           } >>"${GITHUB_OUTPUT}"
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         if: steps.changed-manifests.outputs.has_manifests == 'true'
         with:
           python-version: "3.12"
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
         if: steps.changed-manifests.outputs.has_manifests == 'true'
         with:
           go-version: "1.26.3"
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
         if: steps.changed-manifests.outputs.has_manifests == 'true'
         with:
           toolchain: "1.96.0"
           components: rustfmt,clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae
         if: steps.changed-manifests.outputs.has_manifests == 'true'
         with:
           workspaces: "dataplane -> target"
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         if: steps.changed-manifests.outputs.has_manifests == 'true'
         with:
           node-version: "26"
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@bf6a7d304bc2fdb57e0331155b7ebf2c504acf0a
         if: steps.changed-manifests.outputs.has_manifests == 'true'
-      - uses: azure/setup-kubectl@v4
+      - uses: azure/setup-kubectl@c0c8b32d33a5244f1e5947304550403b63930415
         if: steps.changed-manifests.outputs.has_manifests == 'true'
         with:
           version: "v1.34.2"
@@ -118,7 +118,7 @@ jobs:
           echo "${expected_hash}  /tmp/kind" | sha256sum --check
           sudo install -m 0755 /tmp/kind /usr/local/bin/kind
           kind --version
-      - uses: imranismail/setup-kustomize@v2
+      - uses: imranismail/setup-kustomize@2ba527d4d055ab63514ba50a99456fc35684947f
         if: steps.changed-manifests.outputs.has_manifests == 'true'
       - name: Install dependencies
         if: steps.changed-manifests.outputs.has_manifests == 'true'
@@ -141,7 +141,7 @@ jobs:
           done
       - name: Upload validation artifacts
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           if-no-files-found: ignore
           name: platform-release-results

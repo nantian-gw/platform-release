@@ -32,12 +32,12 @@ jobs:
       passed: ${{ steps.conformance.outputs.passed }}
       failed: ${{ steps.conformance.outputs.failed }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
           repository: nantian-gw/gateway
           path: gateway
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
         with:
           go-version-file: gateway/go.mod
           cache-dependency-path: gateway/go.sum
@@ -136,7 +136,7 @@ jobs:
 
       - name: Upload conformance artifact
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: conformance-results
           path: |
@@ -157,12 +157,12 @@ jobs:
     env:
       CLUSTER_NAME: nightly-perf
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
           repository: nantian-gw/gateway
           path: gateway
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
         with:
           go-version-file: gateway/go.mod
           cache-dependency-path: gateway/go.sum
@@ -473,7 +473,7 @@ jobs:
 
       - name: Upload performance artifact
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: performance-results
           path: |
@@ -492,10 +492,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
 
       - name: Download artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           path: artifacts
 
@@ -595,4 +595,19 @@ jobs:
           fi
           DATE=$(date -u +%Y-%m-%d)
           git commit -m "chore(results): record nightly conformance + performance for ${DATE}"
+          git push
+
+      - name: Cleanup old results
+        run: RETENTION_DAYS=30 bash scripts/cleanup-old-runs.sh
+
+      - name: Commit cleanup
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add results/nightly/
+          if git diff --staged --quiet; then
+            echo "No cleanup changes."
+            exit 0
+          fi
+          git commit -m "chore(results): cleanup run.log files older than 30 days"
           git push
