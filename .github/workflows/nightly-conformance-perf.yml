@@ -584,7 +584,7 @@ jobs:
 
           cat "${RESULTS_DIR}/summary.md"
 
-      - name: Commit and push results
+      - name: Commit and push results (summary only, raw logs archived)
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -596,6 +596,17 @@ jobs:
           DATE=$(date -u +%Y-%m-%d)
           git commit -m "chore(results): record nightly conformance + performance for ${DATE}"
           git push
+
+      - name: Upload raw logs as artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: nightly-raw-logs
+          path: |
+            results/nightly/*/run.log
+            results/nightly/*/vegeta-raw.json
+          retention-days: 90
+          if-no-files-found: warn
 
       - name: Cleanup old results
         run: RETENTION_DAYS=30 bash scripts/cleanup-old-runs.sh
