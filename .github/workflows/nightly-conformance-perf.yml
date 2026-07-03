@@ -584,6 +584,11 @@ jobs:
 
           cat "${RESULTS_DIR}/summary.md"
 
+      - name: Check performance regression
+        if: ${{ always() }}
+        continue-on-error: true
+        run: RESULTS_DIR=results/nightly bash scripts/check-performance-regression.sh
+
       - name: Commit and push results (summary only, raw logs archived)
         run: |
           git config user.name "github-actions[bot]"
