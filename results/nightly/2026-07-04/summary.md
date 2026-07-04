@@ -2,21 +2,21 @@
 
 | Test | Result |
 |------|--------|
-| Conformance | 667 passed, 8 failed, 4 skipped |
-| Performance | 7461739 req @ 12436.214137470482 RPS
+| Conformance | 568 passed, 16 failed, 4 skipped |
+| Performance | 5561695 req @ 9269.491425320008 RPS
 
 | Percentile | Latency |
 |-----------|---------|
-| p50       | 2ms |
-| p90       | 5ms |
-| p95       | 7ms |
-| p99       | 9ms |
-| max       | 367ms |
-| mean      | 3ms | |
+| p50       | 3ms |
+| p90       | 7ms |
+| p95       | 9ms |
+| p99       | 13ms |
+| max       | 94ms |
+| mean      | 4ms | |
 
 Images tested:
 - Control Plane: ghcr.io/nantian-gw/nantian-controlplane:latest
-- Data Plane: ghcr.io/nantian-gw/dataplane:v2026.06.1-amd64
+- Data Plane: ghcr.io/nantian-gw/dataplane:v2026.06.2-amd64
 
 ## Raw Data Files
 - `run.log` — Full conformance test output
