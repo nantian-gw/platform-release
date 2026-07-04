@@ -16,7 +16,7 @@ permissions:
 env:
   GATEWAY_API_VERSION: v1.5.1
   CONTROLPLANE_IMAGE: ghcr.io/nantian-gw/nantian-controlplane:latest
-  DATAPLANE_IMAGE: ghcr.io/nantian-gw/dataplane:latest
+  DATAPLANE_IMAGE: ghcr.io/nantian-gw/dataplane:v2026.06.1-amd64
   DASHBOARD_IMAGE: ghcr.io/nantian-gw/dashboard:latest
 
 jobs:
