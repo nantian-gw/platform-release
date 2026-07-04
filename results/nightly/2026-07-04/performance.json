@@ -4,41 +4,41 @@
   "warmup_sec": 60,
   "measurement_sec": 600,
   "duration_sec": 600,
-  "total_requests": 5561695,
-  "rate_rps": 9269.491425320008,
-  "throughput_rps": 9269.394055173529,
+  "total_requests": 4780998,
+  "rate_rps": 7968.328392270222,
+  "throughput_rps": 7968.24207962541,
   "success_rate": 1,
-  "bytes_in": 1723014340,
+  "bytes_in": 1480998270,
   "bytes_out": 0,
   "status_codes": {
-  "200": 5561695
+  "200": 4780998
 },
   "latency": {
     "min_ms": 0,
-    "p50_ms": 3,
-    "p90_ms": 7,
-    "p95_ms": 9,
-    "p99_ms": 13,
-    "max_ms": 94,
-    "mean_ms": 4
+    "p50_ms": 4,
+    "p90_ms": 9,
+    "p95_ms": 11,
+    "p99_ms": 15,
+    "max_ms": 68,
+    "mean_ms": 5
   },
   "cpu": {
-    "avg_m": 1103,
-    "max_m": 1129
+    "avg_m": 1137.7272727272727,
+    "max_m": 1167
   },
   "memory": {
-    "avg_mi": 99.45454545454545,
-    "max_mi": 108
+    "avg_mi": 110.72727272727273,
+    "max_mi": 121
   },
-  "cpu_mem_samples": [{"minute":0,"source":"kubelet-summary","pod":"nantian-gw-dataplane-dcf867444-6jk4b","cpu_m":1129,"mem_mi":96},
-{"minute":1,"source":"kubelet-summary","pod":"nantian-gw-dataplane-dcf867444-6jk4b","cpu_m":1107,"mem_mi":97},
-{"minute":2,"source":"kubelet-summary","pod":"nantian-gw-dataplane-dcf867444-6jk4b","cpu_m":1101,"mem_mi":97},
-{"minute":3,"source":"kubelet-summary","pod":"nantian-gw-dataplane-dcf867444-6jk4b","cpu_m":1107,"mem_mi":97},
-{"minute":4,"source":"kubelet-summary","pod":"nantian-gw-dataplane-dcf867444-6jk4b","cpu_m":1108,"mem_mi":98},
-{"minute":5,"source":"kubelet-summary","pod":"nantian-gw-dataplane-dcf867444-6jk4b","cpu_m":1103,"mem_mi":98},
-{"minute":6,"source":"kubelet-summary","pod":"nantian-gw-dataplane-dcf867444-6jk4b","cpu_m":1106,"mem_mi":99},
-{"minute":7,"source":"kubelet-summary","pod":"nantian-gw-dataplane-dcf867444-6jk4b","cpu_m":1111,"mem_mi":98},
-{"minute":8,"source":"kubelet-summary","pod":"nantian-gw-dataplane-dcf867444-6jk4b","cpu_m":1108,"mem_mi":99},
-{"minute":9,"source":"kubelet-summary","pod":"nantian-gw-dataplane-dcf867444-6jk4b","cpu_m":1086,"mem_mi":108},
-{"minute":10,"source":"kubelet-summary","pod":"nantian-gw-dataplane-dcf867444-6jk4b","cpu_m":1067,"mem_mi":107}]
+  "cpu_mem_samples": [{"minute":0,"source":"kubelet-summary","pod":"nantian-gw-dataplane-6d7d96d4f-c7pml","cpu_m":1167,"mem_mi":106},
+{"minute":1,"source":"kubelet-summary","pod":"nantian-gw-dataplane-6d7d96d4f-c7pml","cpu_m":1137,"mem_mi":107},
+{"minute":2,"source":"kubelet-summary","pod":"nantian-gw-dataplane-6d7d96d4f-c7pml","cpu_m":1134,"mem_mi":107},
+{"minute":3,"source":"kubelet-summary","pod":"nantian-gw-dataplane-6d7d96d4f-c7pml","cpu_m":1135,"mem_mi":108},
+{"minute":4,"source":"kubelet-summary","pod":"nantian-gw-dataplane-6d7d96d4f-c7pml","cpu_m":1132,"mem_mi":108},
+{"minute":5,"source":"kubelet-summary","pod":"nantian-gw-dataplane-6d7d96d4f-c7pml","cpu_m":1144,"mem_mi":108},
+{"minute":6,"source":"kubelet-summary","pod":"nantian-gw-dataplane-6d7d96d4f-c7pml","cpu_m":1139,"mem_mi":108},
+{"minute":7,"source":"kubelet-summary","pod":"nantian-gw-dataplane-6d7d96d4f-c7pml","cpu_m":1134,"mem_mi":109},
+{"minute":8,"source":"kubelet-summary","pod":"nantian-gw-dataplane-6d7d96d4f-c7pml","cpu_m":1135,"mem_mi":115},
+{"minute":9,"source":"kubelet-summary","pod":"nantian-gw-dataplane-6d7d96d4f-c7pml","cpu_m":1128,"mem_mi":121},
+{"minute":10,"source":"kubelet-summary","pod":"nantian-gw-dataplane-6d7d96d4f-c7pml","cpu_m":1130,"mem_mi":121}]
 }
