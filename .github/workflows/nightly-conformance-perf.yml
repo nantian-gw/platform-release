@@ -538,9 +538,9 @@ jobs:
 
           CONFORMANCE="no data"
           if [[ -f "${RESULTS_DIR}/run.log" ]]; then
-            PASSED=$(grep -c -- '--- PASS:' "${RESULTS_DIR}/run.log" || echo "0")
-            FAILED=$(grep -cE '^    --- FAIL:' "${RESULTS_DIR}/run.log" || echo "0")
-            SKIPPED=$(grep -c -- '--- SKIP:' "${RESULTS_DIR}/run.log" || echo "0")
+            PASSED=$(grep -c -- '--- PASS:' "${RESULTS_DIR}/run.log" | tr -d '\n' || echo "0")
+            FAILED=$(grep -cE '^    --- FAIL:' "${RESULTS_DIR}/run.log" | tr -d '\n' || echo "0")
+            SKIPPED=$(grep -c -- '--- SKIP:' "${RESULTS_DIR}/run.log" | tr -d '\n' || echo "0")
             CONFORMANCE="${PASSED} passed, ${FAILED} failed, ${SKIPPED} skipped"
           fi
 
@@ -548,6 +548,9 @@ jobs:
           if [[ -f "${RESULTS_DIR}/performance.json" ]]; then
             TOTAL=$(jq -r '.total_requests // "N/A"' "${RESULTS_DIR}/performance.json")
             RPS=$(jq -r '.rate_rps // "N/A"' "${RESULTS_DIR}/performance.json")
+            if [[ "${RPS}" != "N/A" ]]; then
+              RPS=$(printf "%.1f" "${RPS}")
+            fi
             P50=$(jq -r '.latency.p50_ms // "N/A"' "${RESULTS_DIR}/performance.json")
             P90=$(jq -r '.latency.p90_ms // "N/A"' "${RESULTS_DIR}/performance.json")
             P95=$(jq -r '.latency.p95_ms // "N/A"' "${RESULTS_DIR}/performance.json")
