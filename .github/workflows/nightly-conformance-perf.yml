@@ -213,8 +213,17 @@ jobs:
           kind: Pod
           metadata: {name: perf-backend, namespace: nantian-gw, labels: {app: perf-backend}}
           spec:
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 65532
+              seccompProfile: {type: RuntimeDefault}
             containers:
-            - {name: echo, image: "${ECHO}", ports: [{containerPort: 3000}, {containerPort: 7070}]}
+            - name: echo
+              image: "${ECHO}"
+              ports: [{containerPort: 3000}, {containerPort: 7070}]
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities: {drop: ["ALL"]}
           ---
           apiVersion: v1
           kind: Service
@@ -376,7 +385,10 @@ jobs:
           ) &
           METRICS_PID=$!
 
-          kubectl run vegeta -n nantian-gw --image=peterevans/vegeta:latest --rm --attach --restart=Never -- \
+          kubectl run vegeta -n nantian-gw --image=peterevans/vegeta:latest --rm --attach --restart=Never \
+            --override-type=strategic \
+            --overrides='{"spec":{"securityContext":{"runAsNonRoot":true,"runAsUser":65532,"seccompProfile":{"type":"RuntimeDefault"}},"containers":[{"name":"vegeta","image":"peterevans/vegeta:latest","securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]}}}]}}' \
+            -- \
             sh -c "printf 'GET http://${GW_SVC}/\n' > /tmp/targets && \
               echo 'Warmup: 60s' >&2 && \
               vegeta attack -duration=60s -rate=0 -max-workers=50 -targets=/tmp/targets >/tmp/vegeta-warmup.bin && \
@@ -505,20 +517,20 @@ jobs:
           RESULTS_DIR="results/nightly/${DATE}"
           mkdir -p "${RESULTS_DIR}"
 
-          if [[ -d artifacts/conformance-results ]]; then
-            find artifacts/conformance-results -type f -name '*.yaml' -o -name '*.log' | while read f; do
-              cp "$f" "${RESULTS_DIR}/$(basename "$f")" 2>/dev/null || true
-            done
-          fi
+          echo "=== Downloaded artifact tree ==="
+          find artifacts -type f 2>/dev/null || echo "(no artifacts directory)"
 
-          PERF_FILE=$(find artifacts/performance-results -name performance.json 2>/dev/null | head -1)
-          if [[ -n "${PERF_FILE}" && -f "${PERF_FILE}" ]]; then
-            cp "${PERF_FILE}" "${RESULTS_DIR}/performance.json"
-          fi
-          RAW_VEGETA=$(find artifacts/performance-results -name vegeta-raw.json 2>/dev/null | head -1)
-          if [[ -n "${RAW_VEGETA}" && -f "${RAW_VEGETA}" ]]; then
-            cp "${RAW_VEGETA}" "${RESULTS_DIR}/vegeta-raw.json"
-          fi
+          # Collect result files by name from wherever download-artifact nested them,
+          # instead of assuming a fixed artifacts/<name>/ layout.
+          find_first() { find artifacts -type f -name "$1" 2>/dev/null | head -1 || true; }
+
+          for name in run.log report.yaml performance.json vegeta-raw.json; do
+            src=$(find_first "${name}")
+            if [[ -n "${src}" ]]; then
+              cp "${src}" "${RESULTS_DIR}/${name}"
+              echo "Collected ${name} from ${src}"
+            fi
+          done
 
           raw_files=""
           append_raw_file() {
