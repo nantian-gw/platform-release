@@ -102,28 +102,41 @@ jobs:
               -args "${args[@]}" 2>&1
           }
 
-          retry_failed() {
-            local log="$1"
-            grep -E '^    --- FAIL:' "$log" | sed 's/    --- FAIL: //' | sed 's/ (.*//' | while read -r t; do
-              echo "  Retrying: $t"
-              go test -tags=conformance -count=1 -v -timeout 10m ./conformance/ \
-                -run "^${t}$" \
-                -args "${args[@]}" 2>&1
-            done
+          # Deduplicated first-level failing test names from a single log file.
+          failed_tests() {
+            grep -E '^    --- FAIL:' "$1" | sed -E 's/^    --- FAIL: //; s/ \(.*//' | sort -u
           }
 
           set +e
+          # Authoritative full-suite pass. run.log is what drives the summary counts,
+          # so it stays limited to this pass; the retry output goes to retry.log and
+          # never inflates PASS/FAIL/SKIP.
           run_test | tee dist/conformance/run.log
           first_status=${PIPESTATUS[0]}
 
-          for attempt in 1 2; do
-            failed_count=$(grep -cE '^    --- FAIL:' dist/conformance/run.log 2>/dev/null || echo 0)
-            if [[ "$failed_count" -eq 0 ]]; then
-              break
+          # One batched retry of the failing tests only (shares a single suite setup
+          # instead of paying it once per test). Retries surface flakes; deterministic
+          # failures stay failing and are not re-run again.
+          mapfile -t retry_list < <(failed_tests dist/conformance/run.log)
+          if [[ ${#retry_list[@]} -gt 0 ]]; then
+            parent="${retry_list[0]%%/*}"
+            subs=()
+            for t in "${retry_list[@]}"; do subs+=("${t#${parent}/}"); done
+            run_re="^${parent}\$/^($(IFS='|'; echo "${subs[*]}"))\$"
+            echo "=== Retry pass: ${#retry_list[@]} failure(s) in one batched run ==="
+            echo "    tests: ${retry_list[*]}"
+            go test -tags=conformance -count=1 -v -timeout 20m ./conformance/ \
+              -run "${run_re}" \
+              -args "${args[@]}" -report-output dist/conformance/retry-report.yaml 2>&1 \
+              | tee dist/conformance/retry.log
+            passed_on_retry=$(comm -23 \
+              <(printf '%s\n' "${retry_list[@]}" | sort -u) \
+              <(failed_tests dist/conformance/retry.log))
+            if [[ -n "${passed_on_retry}" ]]; then
+              echo "=== Passed on retry (flaky, not deterministic): ==="
+              printf '  %s\n' ${passed_on_retry}
             fi
-            echo "=== Retry attempt $attempt ($failed_count failures) ===" | tee -a dist/conformance/run.log
-            retry_failed dist/conformance/run.log | tee -a dist/conformance/run.log
-          done
+          fi
 
           status=${first_status}
           echo "exit_code=${status}" >>"${GITHUB_OUTPUT}"
@@ -213,8 +226,17 @@ jobs:
           kind: Pod
           metadata: {name: perf-backend, namespace: nantian-gw, labels: {app: perf-backend}}
           spec:
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 65532
+              seccompProfile: {type: RuntimeDefault}
             containers:
-            - {name: echo, image: "${ECHO}", ports: [{containerPort: 3000}, {containerPort: 7070}]}
+            - name: echo
+              image: "${ECHO}"
+              ports: [{containerPort: 3000}, {containerPort: 7070}]
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities: {drop: ["ALL"]}
           ---
           apiVersion: v1
           kind: Service
@@ -376,7 +398,10 @@ jobs:
           ) &
           METRICS_PID=$!
 
-          kubectl run vegeta -n nantian-gw --image=peterevans/vegeta:latest --rm --attach --restart=Never -- \
+          kubectl run vegeta -n nantian-gw --image=peterevans/vegeta:latest --rm --attach --restart=Never \
+            --override-type=strategic \
+            --overrides='{"spec":{"securityContext":{"runAsNonRoot":true,"runAsUser":65532,"seccompProfile":{"type":"RuntimeDefault"}},"containers":[{"name":"vegeta","image":"peterevans/vegeta:latest","securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]}}}]}}' \
+            -- \
             sh -c "printf 'GET http://${GW_SVC}/\n' > /tmp/targets && \
               echo 'Warmup: 60s' >&2 && \
               vegeta attack -duration=60s -rate=0 -max-workers=50 -targets=/tmp/targets >/tmp/vegeta-warmup.bin && \
@@ -505,20 +530,20 @@ jobs:
           RESULTS_DIR="results/nightly/${DATE}"
           mkdir -p "${RESULTS_DIR}"
 
-          if [[ -d artifacts/conformance-results ]]; then
-            find artifacts/conformance-results -type f -name '*.yaml' -o -name '*.log' | while read f; do
-              cp "$f" "${RESULTS_DIR}/$(basename "$f")" 2>/dev/null || true
-            done
-          fi
+          echo "=== Downloaded artifact tree ==="
+          find artifacts -type f 2>/dev/null || echo "(no artifacts directory)"
 
-          PERF_FILE=$(find artifacts/performance-results -name performance.json 2>/dev/null | head -1)
-          if [[ -n "${PERF_FILE}" && -f "${PERF_FILE}" ]]; then
-            cp "${PERF_FILE}" "${RESULTS_DIR}/performance.json"
-          fi
-          RAW_VEGETA=$(find artifacts/performance-results -name vegeta-raw.json 2>/dev/null | head -1)
-          if [[ -n "${RAW_VEGETA}" && -f "${RAW_VEGETA}" ]]; then
-            cp "${RAW_VEGETA}" "${RESULTS_DIR}/vegeta-raw.json"
-          fi
+          # Collect result files by name from wherever download-artifact nested them,
+          # instead of assuming a fixed artifacts/<name>/ layout.
+          find_first() { find artifacts -type f -name "$1" 2>/dev/null | head -1 || true; }
+
+          for name in run.log report.yaml performance.json vegeta-raw.json; do
+            src=$(find_first "${name}")
+            if [[ -n "${src}" ]]; then
+              cp "${src}" "${RESULTS_DIR}/${name}"
+              echo "Collected ${name} from ${src}"
+            fi
+          done
 
           raw_files=""
           append_raw_file() {
