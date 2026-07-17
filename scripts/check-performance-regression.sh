@@ -76,6 +76,7 @@ fi
 # Check success rate
 if (( $(awk "BEGIN {print ($today_success < 0.999)}") )); then
   echo "::error::Success rate dropped below 99.9%: ${today_success}"
+  echo "regression=true" >> "$GITHUB_OUTPUT"
   REGRESSION=true
 fi
 
