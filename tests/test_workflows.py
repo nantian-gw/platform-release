@@ -36,8 +36,8 @@ def test_nightly_performance_uses_warmup_before_measured_vegeta_run() -> None:
     vegeta_step = next(step for step in steps if step.get("id") == "vegeta")
     script = vegeta_step["run"]
 
-    assert "vegeta attack -duration=60s" in script
-    assert "vegeta attack -duration=10m" in script
+    assert "vegeta attack -duration=15s" in script  # warmup per scenario
+    assert "vegeta attack -duration=60s" in script  # measurement per scenario
     assert "Warmup" in script
 
 
@@ -47,8 +47,9 @@ def test_nightly_performance_json_records_warmup_and_measurement_windows() -> No
     merge_step = next(step for step in steps if step.get("name") == "Merge results")
     script = merge_step["run"]
 
-    assert '"warmup_sec": 60' in script
-    assert '"measurement_sec": 600' in script
+    assert '"duration_sec": 300' in script  # 4 scenarios × ~75s each
+    assert '"methodology"' in script
+    assert '"scenarios"' in script
 
 
 def test_nightly_summary_lists_only_present_raw_artifacts() -> None:
@@ -68,7 +69,7 @@ def test_nightly_performance_resource_sampler_falls_back_to_kubelet_summary() ->
     vegeta_step = next(step for step in steps if step.get("id") == "vegeta")
     script = vegeta_step["run"]
 
-    assert "capture_dataplane_sample" in script
+    assert "capture_sample" in script
     assert "sample_from_kubectl_top" in script
     assert "sample_from_kubelet_summary" in script
     assert "kubectl top pod -n nantian-gw" in script
