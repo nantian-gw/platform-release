@@ -219,7 +219,7 @@ jobs:
           kubectl wait --for=condition=available --timeout=120s deployment -n nantian-gw --all
           kubectl get pods -n nantian-gw
 
-      - name: Deploy backend + Gateway (multi-protocol)
+      - name: Deploy backend + Gateway (multi-path)
         run: |
           ECHO="gcr.io/k8s-staging-gateway-api/echo-basic:v20260204-monthly-2026.01-60-g28382302"
           kubectl apply -f - <<YAML
@@ -257,12 +257,20 @@ jobs:
             - {name: http, port: 80,  protocol: HTTP}
             - {name: grpc, port: 7070, protocol: HTTP, allowedRoutes: {kinds: [{kind: "GRPCRoute"}]}}
           ---
+          # Route 1: simple catch-all (exercises fast-path)
           apiVersion: gateway.networking.k8s.io/v1
           kind: HTTPRoute
           metadata: {name: perf-http, namespace: nantian-gw}
           spec:
             parentRefs: [{name: perf-gw, sectionName: http}]
-            rules: [{backendRefs: [{name: perf-backend, port: 3000}]}]
+            rules:
+            - matches: [{path: {type: PathPrefix, value: /api/v1/users}}]
+              backendRefs: [{name: perf-backend, port: 3000}]
+            - matches: [{path: {type: PathPrefix, value: /api/v1/orders}}]
+              backendRefs: [{name: perf-backend, port: 3000}]
+            - matches: [{path: {type: PathPrefix, value: /data}}]
+              backendRefs: [{name: perf-backend, port: 3000}]
+            - backendRefs: [{name: perf-backend, port: 3000}]
           ---
           apiVersion: gateway.networking.k8s.io/v1
           kind: GRPCRoute
@@ -284,14 +292,9 @@ jobs:
           kubectl top pod -n nantian-gw 2>/dev/null || echo "metrics not available"
           : > /tmp/cpu-mem-samples.json
 
-      - name: Run vegeta warmup and 10-min measured load through dataplane
+      - name: Run vegeta multi-scenario performance test
         id: vegeta
         run: |
-          echo "=== Services ==="
-          kubectl get svc -n nantian-gw
-          echo "=== Endpoints ==="
-          kubectl get endpoints -n nantian-gw
-
           GW_SVC=$(kubectl get svc -n nantian-gw -o json | jq -r '.items[] | select(.metadata.name | test("perf-gw")) | .metadata.name' | head -1)
           if [[ -z "${GW_SVC}" || "${GW_SVC}" == "null" ]]; then GW_SVC="nantian-gw-perf-gw"; fi
           echo "Target service: ${GW_SVC}"
@@ -301,151 +304,110 @@ jobs:
             kubectl top pod -n nantian-gw --no-headers 2>/dev/null |
               awk '/dataplane/ {print $1,$2,$3; exit}' |
               awk 'NF >= 3 {
-                cpu=$2
-                mem=$3
+                cpu=$2; mem=$3
                 gsub(/m$/, "", cpu)
-                if (mem ~ /Ki$/) {
-                  gsub(/Ki$/, "", mem)
-                  mem=int(mem / 1024)
-                } else if (mem ~ /Mi$/) {
-                  gsub(/Mi$/, "", mem)
-                } else if (mem ~ /Gi$/) {
-                  gsub(/Gi$/, "", mem)
-                  mem=int(mem * 1024)
-                }
+                if (mem ~ /Ki$/) { gsub(/Ki$/, "", mem); mem=int(mem / 1024) }
+                else if (mem ~ /Mi$/) { gsub(/Mi$/, "", mem) }
+                else if (mem ~ /Gi$/) { gsub(/Gi$/, "", mem); mem=int(mem * 1024) }
                 print $1, int(cpu), int(mem)
               }'
           }
 
           dataplane_pod_info() {
-            local info
-            info=$(kubectl get pod -n nantian-gw -l app=nantian-gw-dataplane -o json 2>/dev/null |
+            kubectl get pod -n nantian-gw -l app=nantian-gw-dataplane -o json 2>/dev/null |
               jq -r '.items[]? | select(.status.phase == "Running") | [.metadata.name, .spec.nodeName] | @tsv' |
-              head -1)
-            if [[ -n "${info}" ]]; then
-              printf '%s\n' "${info}"
-              return 0
-            fi
-
-            kubectl get pod -n nantian-gw -o json 2>/dev/null |
-              jq -r '.items[]? | select(.status.phase == "Running") | select(.metadata.name | contains("dataplane")) | [.metadata.name, .spec.nodeName] | @tsv' |
               head -1
           }
 
           sample_from_kubelet_summary() {
-            local info POD NODE
-            info=$(dataplane_pod_info)
-            if [[ -z "${info}" ]]; then
-              return 1
-            fi
-
-            POD=$(echo "${info}" | awk '{print $1}')
-            NODE=$(echo "${info}" | awk '{print $2}')
-            if [[ -z "${POD}" || -z "${NODE}" ]]; then
-              return 1
-            fi
-
+            local info; info=$(dataplane_pod_info)
+            [[ -z "${info}" ]] && return 1
+            local POD NODE; POD=$(echo "${info}" | awk '{print $1}'); NODE=$(echo "${info}" | awk '{print $2}')
+            [[ -z "${POD}" || -z "${NODE}" ]] && return 1
             kubectl get --raw "/api/v1/nodes/${NODE}/proxy/stats/summary" 2>/dev/null |
               jq -r --arg ns "nantian-gw" --arg pod "${POD}" '
-                .pods[]?
-                | select(.podRef.namespace == $ns and .podRef.name == $pod) as $pod_stats
-                | [
-                    $pod_stats.podRef.name,
-                    ((($pod_stats.cpu.usageNanoCores // ([$pod_stats.containers[]?.cpu.usageNanoCores // 0] | add) // 0) / 1000000) | floor),
-                    ((($pod_stats.memory.workingSetBytes // ([$pod_stats.containers[]?.memory.workingSetBytes // 0] | add) // 0) / 1048576) | floor)
-                  ]
-                | @tsv
-              ' |
+                .pods[]? | select(.podRef.namespace == $ns and .podRef.name == $pod) as $p |
+                [ $p.podRef.name,
+                  ((($p.cpu.usageNanoCores // ([$p.containers[]?.cpu.usageNanoCores//0]|add)//0)/1000000)|floor),
+                  ((($p.memory.workingSetBytes // ([$p.containers[]?.memory.workingSetBytes//0]|add)//0)/1048576)|floor) ] | @tsv' |
               head -1
           }
 
-          capture_dataplane_sample() {
-            local minute="$1"
-            local source="kubectl-top"
-            local sample POD CPU MEM
-
-            sample=$(sample_from_kubectl_top || true)
-            if [[ -z "${sample}" ]]; then
-              source="kubelet-summary"
-              sample=$(sample_from_kubelet_summary || true)
-            fi
-
-            if [[ -z "${sample}" ]]; then
-              echo "t=${minute}min cpu/memory unavailable from kubectl top and kubelet summary"
-              return 0
-            fi
-
-            read -r POD CPU MEM <<<"${sample}"
-            if ! [[ "${CPU}" =~ ^[0-9]+$ && "${MEM}" =~ ^[0-9]+$ ]]; then
-              echo "t=${minute}min invalid cpu/memory sample from ${source}: ${sample}"
-              return 0
-            fi
-
-            echo "t=${minute}min source=${source} pod=${POD} cpu=${CPU}m mem=${MEM}Mi"
-            printf '%s,\n' "$(jq -nc \
-              --argjson minute "${minute}" \
-              --arg source "${source}" \
-              --arg pod "${POD}" \
-              --argjson cpu_m "${CPU}" \
-              --argjson mem_mi "${MEM}" \
-              '{minute:$minute,source:$source,pod:$pod,cpu_m:$cpu_m,mem_mi:$mem_mi}')" >> /tmp/cpu-mem-samples.json
+          capture_sample() {
+            local m="$1"; local src="kubectl-top"; local s
+            s=$(sample_from_kubectl_top || true)
+            [[ -z "${s}" ]] && { src="kubelet-summary"; s=$(sample_from_kubelet_summary || true); }
+            if [[ -z "${s}" ]]; then echo "t=${m}min no cpu/mem data"; return 0; fi
+            read -r POD CPU MEM <<<"${s}"
+            [[ "${CPU}" =~ ^[0-9]+$ && "${MEM}" =~ ^[0-9]+$ ]] || { echo "t=${m}min invalid sample: ${s}"; return 0; }
+            echo "t=${m}min src=${src} pod=${POD} cpu=${CPU}m mem=${MEM}Mi"
+            printf '%s,\n' "$(jq -nc --argjson m "${m}" --arg src "${src}" --arg pod "${POD}" --argjson cpu "${CPU}" --argjson mem "${MEM}" '{minute:$m,source:$src,pod:$pod,cpu_m:$cpu,mem_mi:$mem}')" >> /tmp/cpu-mem-samples.json
           }
 
-          (
-            for i in $(seq 0 11); do
-              sleep 60
-              capture_dataplane_sample "$i"
-            done
-          ) &
-          METRICS_PID=$!
+          # --- Scenarios: fixed-rate, 60s each, 15s warmup before each ---
+          declare -A SCENARIOS=(
+            ["simple"]="GET http://${GW_SVC}/"
+            ["path-users"]="GET http://${GW_SVC}/api/v1/users"
+            ["path-orders"]="GET http://${GW_SVC}/api/v1/orders"
+            ["header-data"]="GET http://${GW_SVC}/data\nX-Custom: perf-test"
+          )
+          declare -A RATES=(["simple"]=3000 ["path-users"]=2000 ["path-orders"]=2000 ["header-data"]=1000)
 
-          kubectl run vegeta -n nantian-gw --image=peterevans/vegeta:latest --rm --attach --restart=Never \
-            --override-type=strategic \
-            --overrides='{"spec":{"securityContext":{"runAsNonRoot":true,"runAsUser":65532,"seccompProfile":{"type":"RuntimeDefault"}},"containers":[{"name":"vegeta","image":"peterevans/vegeta:latest","securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]}}}]}}' \
-            -- \
-            sh -c "printf 'GET http://${GW_SVC}/\n' > /tmp/targets && \
-              echo 'Warmup: 60s' >&2 && \
-              vegeta attack -duration=60s -rate=0 -max-workers=50 -targets=/tmp/targets >/tmp/vegeta-warmup.bin && \
-              vegeta report /tmp/vegeta-warmup.bin >&2 && \
-              echo 'Measurement: 10m' >&2 && \
-              vegeta attack -duration=10m -rate=0 -max-workers=50 -targets=/tmp/targets | vegeta report -type=json" \
-            > /tmp/vegeta-output.json 2>/tmp/vegeta-stderr.txt || true
+          : > /tmp/vegeta-results.json
+          MINUTE=0
+          for scenario in simple path-users path-orders header-data; do
+            rate="${RATES[$scenario]}"
+            targets="${SCENARIOS[$scenario]}"
+            echo "=== Scenario: ${scenario} @ ${rate} RPS ==="
 
-          kill "${METRICS_PID}" 2>/dev/null || true
-          wait "${METRICS_PID}" 2>/dev/null || true
+            printf '%b\n' "$targets" > /tmp/targets
 
-          cat /tmp/vegeta-stderr.txt 2>/dev/null | tail -5 || true
-          grep '^{' /tmp/vegeta-output.json > /tmp/vegeta-clean.json 2>/dev/null || true
+            echo "  Warmup (15s @ ${rate} RPS)..."
+            kubectl run "vegeta-warmup-${scenario}" -n nantian-gw \
+              --image=peterevans/vegeta:latest --rm --attach --restart=Never -i -q \
+              --overrides='{"spec":{"securityContext":{"runAsNonRoot":true,"runAsUser":65532,"seccompProfile":{"type":"RuntimeDefault"}},"containers":[{"name":"v","image":"peterevans/vegeta:latest","securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]}}}],"restartPolicy":"Never"}}' \
+              -- vegeta attack -duration=15s -rate="${rate}" -max-workers=30 -targets=/tmp/targets >/tmp/warmup.bin 2>/dev/null || true
+
+            echo "  Measurement (60s @ ${rate} RPS)..."
+            kubectl run "vegeta-${scenario}" -n nantian-gw \
+              --image=peterevans/vegeta:latest --rm --attach --restart=Never -i -q \
+              --overrides='{"spec":{"securityContext":{"runAsNonRoot":true,"runAsUser":65532,"seccompProfile":{"type":"RuntimeDefault"}},"containers":[{"name":"v","image":"peterevans/vegeta:latest","securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]}}}],"restartPolicy":"Never"}}' \
+              -- vegeta attack -duration=60s -rate="${rate}" -max-workers=30 -targets=/tmp/targets | vegeta report -type=json >/tmp/report.json 2>/dev/null || true
+
+            if [[ -s /tmp/report.json ]]; then
+              jq -c --arg scenario "${scenario}" --argjson rate "${rate}" \
+                '{scenario:$scenario,rate:$rate,requests:.requests,success:.success,
+                  p50:(.latencies."50th"/1000000|floor),p95:(.latencies."95th"/1000000|floor),
+                  p99:(.latencies."99th"/1000000|floor),max:(.latencies.max/1000000|floor),
+                  mean:(.latencies.mean/1000000|floor),status_codes:.status_codes}' \
+                /tmp/report.json >> /tmp/vegeta-results.json
+              echo "  OK: $(jq -r '"\(.requests) req, p50=\(.latencies."50th"/1000000|floor)ms, p99=\(.latencies."99th"/1000000|floor)ms"' /tmp/report.json)"
+            else
+              echo "  FAILED: no report"
+            fi
+            capture_sample "$((MINUTE++))"
+            sleep 3
+          done
+
+          # Produce clean output
+          cp /tmp/vegeta-results.json /tmp/vegeta-clean.json 2>/dev/null || true
 
       - name: Merge results
         run: |
           set +e
           SAMPLES=$(cat /tmp/cpu-mem-samples.json 2>/dev/null | sed '$ s/,$//')
-          if [[ -z "${SAMPLES}" ]]; then
-            SAMPLES="[]"
-          else
-            SAMPLES="[${SAMPLES}]"
+          SAMPLES="${SAMPLES:-[]}"
+          [[ "${SAMPLES}" != "[]" ]] && SAMPLES="[${SAMPLES}]"
+
+          # Build scenario results array from JSONL
+          SCENARIOS="[]"
+          if [[ -s /tmp/vegeta-clean.json ]]; then
+            SCENARIOS=$(jq -s '.' /tmp/vegeta-clean.json)
           fi
 
-          if [[ -s /tmp/vegeta-clean.json ]]; then
-            REQS=$(jq -r '.requests // 0' /tmp/vegeta-clean.json)
-            RATE=$(jq -r '.rate // 0' /tmp/vegeta-clean.json)
-            SUCCESS=$(jq -r '.success // 0' /tmp/vegeta-clean.json)
-            P50=$(jq -r '(.latencies."50th" // 0) / 1000000 | floor' /tmp/vegeta-clean.json)
-            P90=$(jq -r '(.latencies."90th" // 0) / 1000000 | floor' /tmp/vegeta-clean.json)
-            P95=$(jq -r '(.latencies."95th" // 0) / 1000000 | floor' /tmp/vegeta-clean.json)
-            P99=$(jq -r '(.latencies."99th" // 0) / 1000000 | floor' /tmp/vegeta-clean.json)
-            MAX=$(jq -r '(.latencies.max // 0) / 1000000 | floor' /tmp/vegeta-clean.json)
-            MIN=$(jq -r '(.latencies.min // 0) / 1000000 | floor' /tmp/vegeta-clean.json)
-            MEAN=$(jq -r '(.latencies.mean // 0) / 1000000 | floor' /tmp/vegeta-clean.json)
-            BYTES_IN=$(jq -r '.bytes_in.total // 0' /tmp/vegeta-clean.json)
-            BYTES_OUT=$(jq -r '.bytes_out.total // 0' /tmp/vegeta-clean.json)
-            STATUS_CODES=$(jq -r '.status_codes // {}' /tmp/vegeta-clean.json)
-            THROUGHPUT=$(jq -r '.throughput // 0' /tmp/vegeta-clean.json)
-          else
-            REQS=0; RATE=0; SUCCESS=0; P50=0; P90=0; P95=0; P99=0; MAX=0; MIN=0; MEAN=0
-            BYTES_IN=0; BYTES_OUT=0; STATUS_CODES="{}"; THROUGHPUT=0
-          fi
+          # Aggregate summary stats across all scenarios
+          TOTAL_REQ=$(echo "${SCENARIOS}" | jq '[.[].requests] | add // 0')
+          SUCCESS_RATE=$(echo "${SCENARIOS}" | jq '[.[].success] | add / ([.[].requests] | add) // 0')
 
           CPU_AVG=0; CPU_MAX=0; MEM_AVG=0; MEM_MAX=0
           if [[ "${SAMPLES}" != "[]" ]]; then
@@ -459,26 +421,11 @@ jobs:
           cat > dist/performance.json <<JSON
           {
             "tool": "vegeta",
-            "target": "dataplane via Gateway",
-            "warmup_sec": 60,
-            "measurement_sec": 600,
-            "duration_sec": 600,
-            "total_requests": ${REQS},
-            "rate_rps": ${RATE},
-            "throughput_rps": ${THROUGHPUT},
-            "success_rate": ${SUCCESS},
-            "bytes_in": ${BYTES_IN},
-            "bytes_out": ${BYTES_OUT},
-            "status_codes": ${STATUS_CODES},
-            "latency": {
-              "min_ms": ${MIN},
-              "p50_ms": ${P50},
-              "p90_ms": ${P90},
-              "p95_ms": ${P95},
-              "p99_ms": ${P99},
-              "max_ms": ${MAX},
-              "mean_ms": ${MEAN}
-            },
+            "target": "dataplane via Gateway (multi-scenario fixed-rate)",
+            "methodology": "4 scenarios at fixed rates: simple(3000rps), path-users(2000rps), path-orders(2000rps), header-data(1000rps). 15s warmup + 60s measurement per scenario.",
+            "duration_sec": 300,
+            "total_requests": ${TOTAL_REQ},
+            "success_rate": ${SUCCESS_RATE},
             "cpu": {
               "avg_m": ${CPU_AVG},
               "max_m": ${CPU_MAX}
@@ -487,6 +434,7 @@ jobs:
               "avg_mi": ${MEM_AVG},
               "max_mi": ${MEM_MAX}
             },
+            "scenarios": ${SCENARIOS},
             "cpu_mem_samples": ${SAMPLES}
           }
           JSON
@@ -573,26 +521,24 @@ jobs:
           PERF="no data"
           if [[ -f "${RESULTS_DIR}/performance.json" ]]; then
             TOTAL=$(jq -r '.total_requests // "N/A"' "${RESULTS_DIR}/performance.json")
-            RPS=$(jq -r '.rate_rps // "N/A"' "${RESULTS_DIR}/performance.json")
-            if [[ "${RPS}" != "N/A" ]]; then
-              RPS=$(printf "%.1f" "${RPS}")
-            fi
-            P50=$(jq -r '.latency.p50_ms // "N/A"' "${RESULTS_DIR}/performance.json")
-            P90=$(jq -r '.latency.p90_ms // "N/A"' "${RESULTS_DIR}/performance.json")
-            P95=$(jq -r '.latency.p95_ms // "N/A"' "${RESULTS_DIR}/performance.json")
-            P99=$(jq -r '.latency.p99_ms // "N/A"' "${RESULTS_DIR}/performance.json")
-            MAX=$(jq -r '.latency.max_ms // "N/A"' "${RESULTS_DIR}/performance.json")
-            MEAN=$(jq -r '.latency.mean_ms // "N/A"' "${RESULTS_DIR}/performance.json")
-            PERF="${TOTAL} req @ ${RPS} RPS
+            SCENARIO_TABLE=""
+            while IFS= read -r row; do
+              s=$(echo "$row" | jq -r '.scenario')
+              r=$(echo "$row" | jq -r '.rate')
+              p50=$(echo "$row" | jq -r '.p50')
+              p99=$(echo "$row" | jq -r '.p99')
+              req=$(echo "$row" | jq -r '.requests')
+              [[ "${s}" != "null" ]] && SCENARIO_TABLE="${SCENARIO_TABLE}| ${s} | ${r}/s | ${p50}ms | ${p99}ms | ${req} |"$'\n'
+            done < <(jq -c '.scenarios[]?' "${RESULTS_DIR}/performance.json" 2>/dev/null)
+            if [[ -n "${SCENARIO_TABLE}" ]]; then
+              PERF="${TOTAL} total requests
 
-          | Percentile | Latency |
-          |-----------|---------|
-          | p50       | ${P50}ms |
-          | p90       | ${P90}ms |
-          | p95       | ${P95}ms |
-          | p99       | ${P99}ms |
-          | max       | ${MAX}ms |
-          | mean      | ${MEAN}ms |"
+          | Scenario | Rate | p50 | p99 | Requests |
+          |----------|------|-----|-----|----------|
+          ${SCENARIO_TABLE}"
+            else
+              PERF="${TOTAL} total requests"
+            fi
           fi
 
           cat > "${RESULTS_DIR}/summary.md" <<EOF
