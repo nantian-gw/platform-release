@@ -18,6 +18,7 @@ env:
   CONTROLPLANE_IMAGE: ghcr.io/nantian-gw/nantian-controlplane:latest
   DATAPLANE_IMAGE: ghcr.io/nantian-gw/dataplane:latest-amd64
   DASHBOARD_IMAGE: ghcr.io/nantian-gw/dashboard:latest
+  TIMEOUT: "600s"
 
 jobs:
   conformance:
