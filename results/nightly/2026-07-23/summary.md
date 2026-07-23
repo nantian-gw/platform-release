@@ -2,7 +2,7 @@
 
 | Test | Result |
 |------|--------|
-| Conformance | no data |
+| Conformance | 459 passed, 6 failed, 27 skipped |
 | Performance | no data |
 
 Images tested:
@@ -10,5 +10,5 @@ Images tested:
 - Data Plane: ghcr.io/nantian-gw/dataplane:latest-amd64
 
 ## Raw Data Files
-- No raw data files were produced
+- `run.log` — Full conformance test output
 
