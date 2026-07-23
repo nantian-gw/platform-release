@@ -74,6 +74,20 @@ jobs:
           KIND_DASHBOARD_IMAGE: ${{ env.DASHBOARD_IMAGE }}
         run: scripts/ci/deploy-kind-conformance.sh
 
+      - name: Dataplane diagnostics (on deploy failure)
+        if: failure()
+        run: |
+          echo "=== Dataplane pod status ==="
+          kubectl get pods -n nantian-gw -l app=nantian-gw-dataplane -o wide 2>/dev/null || true
+          echo "=== Dataplane pod describe ==="
+          kubectl describe pod -n nantian-gw -l app=nantian-gw-dataplane 2>/dev/null || true
+          echo "=== Dataplane pod logs (previous) ==="
+          kubectl logs -n nantian-gw -l app=nantian-gw-dataplane --previous --tail=50 2>/dev/null || true
+          echo "=== Dataplane pod logs (current) ==="
+          kubectl logs -n nantian-gw -l app=nantian-gw-dataplane --tail=50 2>/dev/null || true
+          echo "=== All pods ==="
+          kubectl get pods -n nantian-gw -o wide 2>/dev/null || true
+
       - name: Record image versions
         run: |
           echo "=== Images under test ==="
