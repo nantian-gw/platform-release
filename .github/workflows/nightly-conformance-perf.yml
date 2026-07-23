@@ -360,19 +360,19 @@ jobs:
             targets="${SCENARIOS[$scenario]}"
             echo "=== Scenario: ${scenario} @ ${rate} RPS ==="
 
-            printf '%b\n' "$targets" > /tmp/targets
-
             echo "  Warmup (15s @ ${rate} RPS)..."
             kubectl run "vegeta-warmup-${scenario}" -n nantian-gw \
               --image=peterevans/vegeta:latest --rm --attach --restart=Never -i -q \
               --overrides='{"spec":{"securityContext":{"runAsNonRoot":true,"runAsUser":65532,"seccompProfile":{"type":"RuntimeDefault"}},"containers":[{"name":"v","image":"peterevans/vegeta:latest","securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]}}}],"restartPolicy":"Never"}}' \
-              -- vegeta attack -duration=15s -rate="${rate}" -max-workers=30 -targets=/tmp/targets >/tmp/warmup.bin 2>/dev/null || true
+              -- sh -c "printf '%b\n' '${targets}' > /tmp/t && vegeta attack -duration=15s -rate=${rate} -max-workers=30 -targets=/tmp/t" \
+              >/tmp/warmup.bin 2>/dev/null || true
 
             echo "  Measurement (60s @ ${rate} RPS)..."
             kubectl run "vegeta-${scenario}" -n nantian-gw \
               --image=peterevans/vegeta:latest --rm --attach --restart=Never -i -q \
               --overrides='{"spec":{"securityContext":{"runAsNonRoot":true,"runAsUser":65532,"seccompProfile":{"type":"RuntimeDefault"}},"containers":[{"name":"v","image":"peterevans/vegeta:latest","securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]}}}],"restartPolicy":"Never"}}' \
-              -- vegeta attack -duration=60s -rate="${rate}" -max-workers=30 -targets=/tmp/targets | vegeta report -type=json >/tmp/report.json 2>/dev/null || true
+              -- sh -c "printf '%b\n' '${targets}' > /tmp/t && vegeta attack -duration=60s -rate=${rate} -max-workers=30 -targets=/tmp/t | vegeta report -type=json" \
+              >/tmp/report.json 2>/dev/null || true
 
             if [[ -s /tmp/report.json ]]; then
               jq -c --arg scenario "${scenario}" --argjson rate "${rate}" \
@@ -402,20 +402,28 @@ jobs:
           # Build scenario results array from JSONL
           SCENARIOS="[]"
           if [[ -s /tmp/vegeta-clean.json ]]; then
-            SCENARIOS=$(jq -s '.' /tmp/vegeta-clean.json)
+            SCENARIOS=$(jq -s '.' /tmp/vegeta-clean.json 2>/dev/null || echo "[]")
           fi
+          # Defensive fallback for all interpolated values
+          SCENARIOS="${SCENARIOS:-[]}"
 
           # Aggregate summary stats across all scenarios
           TOTAL_REQ=$(echo "${SCENARIOS}" | jq '[.[].requests] | add // 0')
-          SUCCESS_RATE=$(echo "${SCENARIOS}" | jq '[.[].success] | add / ([.[].requests] | add) // 0')
+          SUCCESS_RATE=$(echo "${SCENARIOS}" | jq '([.[].requests] | add) as $total | if $total > 0 then ([.[].success] | add) / $total else 0 end')
+          # Defensive fallback in case jq failed (set +e active)
+          TOTAL_REQ="${TOTAL_REQ:-0}"
+          SUCCESS_RATE="${SUCCESS_RATE:-0}"
 
           CPU_AVG=0; CPU_MAX=0; MEM_AVG=0; MEM_MAX=0
           if [[ "${SAMPLES}" != "[]" ]]; then
-            CPU_AVG=$(echo "${SAMPLES}" | jq '[.[].cpu_m] | add / length // 0' 2>/dev/null || echo 0)
+            CPU_AVG=$(echo "${SAMPLES}" | jq '[.[].cpu_m] | add / length' 2>/dev/null || echo 0)
             CPU_MAX=$(echo "${SAMPLES}" | jq '[.[].cpu_m] | max // 0' 2>/dev/null || echo 0)
-            MEM_AVG=$(echo "${SAMPLES}" | jq '[.[].mem_mi] | add / length // 0' 2>/dev/null || echo 0)
+            MEM_AVG=$(echo "${SAMPLES}" | jq '[.[].mem_mi] | add / length' 2>/dev/null || echo 0)
             MEM_MAX=$(echo "${SAMPLES}" | jq '[.[].mem_mi] | max // 0' 2>/dev/null || echo 0)
           fi
+          # Defensive defaults for all numeric fields
+          CPU_AVG="${CPU_AVG:-0}"; CPU_MAX="${CPU_MAX:-0}"
+          MEM_AVG="${MEM_AVG:-0}"; MEM_MAX="${MEM_MAX:-0}"
 
           mkdir -p dist
           cat > dist/performance.json <<JSON
