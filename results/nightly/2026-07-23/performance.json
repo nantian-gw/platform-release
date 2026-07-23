@@ -1,0 +1,21 @@
+{
+  "tool": "vegeta",
+  "target": "dataplane via Gateway (multi-scenario fixed-rate)",
+  "methodology": "4 scenarios at fixed rates: simple(3000rps), path-users(2000rps), path-orders(2000rps), header-data(1000rps). 15s warmup + 60s measurement per scenario.",
+  "duration_sec": 300,
+  "total_requests": 0,
+  "success_rate": 0,
+  "cpu": {
+    "avg_m": 2.5,
+    "max_m": 10
+  },
+  "memory": {
+    "avg_mi": 83,
+    "max_mi": 83
+  },
+  "scenarios": [],
+  "cpu_mem_samples": [{"minute":0,"source":"kubelet-summary","pod":"nantian-gw-dataplane-6db8f776dd-4xj42","cpu_m":10,"mem_mi":83},
+{"minute":1,"source":"kubelet-summary","pod":"nantian-gw-dataplane-6db8f776dd-4xj42","cpu_m":0,"mem_mi":83},
+{"minute":2,"source":"kubelet-summary","pod":"nantian-gw-dataplane-6db8f776dd-4xj42","cpu_m":0,"mem_mi":83},
+{"minute":3,"source":"kubelet-summary","pod":"nantian-gw-dataplane-6db8f776dd-4xj42","cpu_m":0,"mem_mi":83}]
+}
