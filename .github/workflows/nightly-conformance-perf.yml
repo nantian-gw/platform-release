@@ -385,17 +385,21 @@ jobs:
             kubectl run "vegeta-${scenario}" -n nantian-gw \
               --image=peterevans/vegeta:latest --rm --attach --restart=Never -i -q \
               --overrides='{"spec":{"securityContext":{"runAsNonRoot":true,"runAsUser":65532,"seccompProfile":{"type":"RuntimeDefault"}},"containers":[{"name":"v","image":"peterevans/vegeta:latest","securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]}}}],"restartPolicy":"Never"}}' \
-              -- sh -c "printf '%b\n' '${targets}' > /tmp/t && vegeta attack -duration=60s -rate=${rate} -max-workers=30 -targets=/tmp/t | vegeta report -type=json" \
+              -- sh -c "printf '%b\n' '${targets}' > /tmp/t && (vegeta attack -duration=60s -rate=${rate} -max-workers=30 -targets=/tmp/t | vegeta report -type=json || echo '{\"requests\":0,\"success\":0,\"latencies\":{\"50th\":0,\"95th\":0,\"99th\":0,\"max\":0,\"mean\":0},\"status_codes\":{}}')" \
               >/tmp/report.json 2>/dev/null || true
 
             if [[ -s /tmp/report.json ]]; then
-              jq -c --arg scenario "${scenario}" --argjson rate "${rate}" \
-                '{scenario:$scenario,rate:$rate,requests:.requests,success:.success,
-                  p50:(.latencies."50th"/1000000|floor),p95:(.latencies."95th"/1000000|floor),
-                  p99:(.latencies."99th"/1000000|floor),max:(.latencies.max/1000000|floor),
-                  mean:(.latencies.mean/1000000|floor),status_codes:.status_codes}' \
-                /tmp/report.json >> /tmp/vegeta-results.json
-              echo "  OK: $(jq -r '"\(.requests) req, p50=\(.latencies."50th"/1000000|floor)ms, p99=\(.latencies."99th"/1000000|floor)ms"' /tmp/report.json)"
+              if jq -e . /tmp/report.json >/dev/null 2>&1; then
+                jq -c --arg scenario "${scenario}" --argjson rate "${rate}" \
+                  '{scenario:$scenario,rate:$rate,requests:.requests,success:.success,
+                    p50:(.latencies."50th"/1000000|floor),p95:(.latencies."95th"/1000000|floor),
+                    p99:(.latencies."99th"/1000000|floor),max:(.latencies.max/1000000|floor),
+                    mean:(.latencies.mean/1000000|floor),status_codes:.status_codes}' \
+                  /tmp/report.json >> /tmp/vegeta-results.json
+                echo "  OK: $(jq -r '"\(.requests) req, p50=\(.latencies."50th"/1000000|floor)ms, p99=\(.latencies."99th"/1000000|floor)ms"' /tmp/report.json)"
+              else
+                echo "  FAILED: invalid JSON in report"
+              fi
             else
               echo "  FAILED: no report"
             fi
