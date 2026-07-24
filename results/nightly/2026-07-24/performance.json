@@ -7,15 +7,15 @@
   "success_rate": 0,
   "cpu": {
     "avg_m": 3,
-    "max_m": 9
+    "max_m": 6
   },
   "memory": {
-    "avg_mi": 81.75,
-    "max_mi": 84
+    "avg_mi": 85.75,
+    "max_mi": 86
   },
   "scenarios": [],
-  "cpu_mem_samples": [{"minute":0,"source":"kubelet-summary","pod":"nantian-gw-dataplane-6db8f776dd-9txkd","cpu_m":9,"mem_mi":77},
-{"minute":1,"source":"kubelet-summary","pod":"nantian-gw-dataplane-6db8f776dd-9txkd","cpu_m":3,"mem_mi":83},
-{"minute":2,"source":"kubelet-summary","pod":"nantian-gw-dataplane-6db8f776dd-9txkd","cpu_m":0,"mem_mi":83},
-{"minute":3,"source":"kubelet-summary","pod":"nantian-gw-dataplane-6db8f776dd-9txkd","cpu_m":0,"mem_mi":84}]
+  "cpu_mem_samples": [{"minute":0,"source":"kubelet-summary","pod":"nantian-gw-dataplane-6db8f776dd-sjhsv","cpu_m":6,"mem_mi":86},
+{"minute":1,"source":"kubelet-summary","pod":"nantian-gw-dataplane-6db8f776dd-sjhsv","cpu_m":6,"mem_mi":86},
+{"minute":2,"source":"kubelet-summary","pod":"nantian-gw-dataplane-6db8f776dd-sjhsv","cpu_m":0,"mem_mi":86},
+{"minute":3,"source":"kubelet-summary","pod":"nantian-gw-dataplane-6db8f776dd-sjhsv","cpu_m":0,"mem_mi":85}]
 }
