@@ -2,7 +2,7 @@
 
 | Test | Result |
 |------|--------|
-| Conformance | 316 passed, 0 failed, 59 skipped |
+| Conformance | 614 passed, 14 failed, 10 skipped |
 | Performance | 0 total requests |
 
 Images tested:
