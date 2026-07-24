@@ -4,8 +4,3 @@ __pycache__/
 .work/
 *.pyc
 docs/superpowers/
-
-# Raw nightly logs — archive externally (S3/OSS), not in git.
-# Structured summaries (summary.md, performance.json) stay in repo.
-results/nightly/*/run.log
-results/nightly/*/vegeta-raw.json
