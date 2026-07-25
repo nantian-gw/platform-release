@@ -387,6 +387,11 @@ jobs:
             sleep 2
           done
 
+          # Wait for xDS snapshot propagation: the controlplane must
+          # translate the now-accepted HTTPRoute and push a new snapshot.
+          echo "Waiting 30s for xDS snapshot propagation..."
+          sleep 30
+
           declare -A SCENARIOS=(
             ["simple"]="GET http://${GW_SVC}/"
             ["path-users"]="GET http://${GW_SVC}/api/v1/users"
