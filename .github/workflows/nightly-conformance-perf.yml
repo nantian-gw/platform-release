@@ -492,6 +492,8 @@ jobs:
           if [[ "${TOTAL}" == "0" ]]; then
             echo "=== Gateway perf-gw status ==="
             kubectl get gateway perf-gw -n nantian-gw -o json 2>/dev/null | jq '{conditions: .status.conditions, addresses: .status.addresses}' || true
+            echo "=== HTTPRoutes ==="
+            kubectl get httproutes -n nantian-gw -o json 2>/dev/null | jq '.items[] | {name: .metadata.name, parentRefs: .spec.parentRefs, status: .status.routeStatus.parents}' || true
             echo "=== Dataplane pod logs (last 20 lines) ==="
             kubectl logs -n nantian-gw -l app=nantian-gw-dataplane --tail=20 2>/dev/null || true
             echo "=== Controlplane pod logs (last 20 lines) ==="
