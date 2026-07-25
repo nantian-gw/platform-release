@@ -155,7 +155,7 @@ jobs:
 
           status=${first_status}
           echo "exit_code=${status}" >>"${GITHUB_OUTPUT}"
-          exit 0
+          exit ${status}
 
       - name: Collect diagnostics on failure
         if: failure()

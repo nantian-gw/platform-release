@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 tmp="$(mktemp -d)"
 trap 'rm -rf "${tmp}"' EXIT
 
@@ -11,7 +13,7 @@ fi
 
 platform_version="$1"
 version_pattern='^v[0-9]{4}\.[0-9]{2}\.[0-9]+(-rc[0-9]+)?$'
-python_bin="${PYTHON_BIN:-.venv/bin/python3}"
+python_bin="${PYTHON_BIN:-$SCRIPT_DIR/../.venv/bin/python3}"
 
 if [[ ! "${platform_version}" =~ ${version_pattern} ]]; then
   echo "platform version must match ${version_pattern}" >&2
