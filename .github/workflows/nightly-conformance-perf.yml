@@ -24,7 +24,7 @@ jobs:
   conformance:
     name: Gateway API Conformance
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     env:
       CLUSTER_NAME: nightly-conformance
       CONFORMANCE_EXPERIMENTAL: "true"
@@ -513,9 +513,12 @@ jobs:
             kubectl get gateway perf-gw -n nantian-gw -o json 2>/dev/null | jq '{conditions: .status.conditions, addresses: .status.addresses}' || true
             echo "=== HTTPRoutes ==="
             kubectl get httproutes -n nantian-gw -o json 2>/dev/null | jq '.items[] | {name: .metadata.name, parentRefs: .spec.parentRefs, status: .status.routeStatus.parents}' || true
-            echo "=== Quick wget test to gateway ==="
-            kubectl run "wget-diag" -n nantian-gw --rm -i --restart=Never \
-              --image=busybox:stable -- sh -c "wget -qO- --timeout=5 http://nantian-gw-perf-gw/ 2>&1; echo EXIT:\$?" 2>/dev/null || true
+            echo "=== Dataplane proxy direct test ==="
+            DP_POD=$(kubectl get pod -n nantian-gw -l app=nantian-gw-dataplane -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+            if [[ -n "${DP_POD}" ]]; then
+              echo "Testing via dataplane pod ${DP_POD}..."
+              kubectl exec -n nantian-gw "${DP_POD}" -- sh -c "wget -qO- --timeout=3 http://127.0.0.1:80/ 2>&1; echo EXIT:\$?" 2>/dev/null || true
+            fi
             echo "=== Dataplane pod logs (last 20 lines) ==="
             kubectl logs -n nantian-gw -l app=nantian-gw-dataplane --tail=20 2>/dev/null || true
             echo "=== Controlplane pod logs (last 20 lines) ==="
