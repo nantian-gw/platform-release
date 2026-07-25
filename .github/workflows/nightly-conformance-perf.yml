@@ -373,6 +373,20 @@ jobs:
             sleep 2
           done
 
+          # Wait for the HTTPRoute to be accepted by the controlplane.
+          # The route status is processed asynchronously and must be
+          # populated before the translator includes it in the xDS snapshot.
+          echo "Waiting for HTTPRoute perf-http acceptance..."
+          for attempt in $(seq 1 30); do
+            S=$(kubectl get httproute perf-http -n nantian-gw -o json 2>/dev/null | jq -r '.status.parents[]? | select(.parentRef.name=="perf-gw") | .conditions[]? | select(.type=="Accepted") | .status // ""')
+            if [[ "$S" == "True" ]]; then
+              echo "HTTPRoute perf-http accepted (attempt ${attempt})"
+              break
+            fi
+            echo "  attempt ${attempt}/30: waiting..."
+            sleep 2
+          done
+
           declare -A SCENARIOS=(
             ["simple"]="GET http://${GW_SVC}/"
             ["path-users"]="GET http://${GW_SVC}/api/v1/users"
