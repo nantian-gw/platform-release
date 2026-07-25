@@ -418,7 +418,7 @@ jobs:
             kubectl run "vegeta-${scenario}" -n nantian-gw \
               --image=peterevans/vegeta:latest --rm --attach --restart=Never -i -q \
               --overrides='{"spec":{"securityContext":{"runAsNonRoot":true,"runAsUser":65532,"seccompProfile":{"type":"RuntimeDefault"}},"containers":[{"name":"v","image":"peterevans/vegeta:latest","securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]}}}],"restartPolicy":"Never"}}' \
-              -- sh -c "printf '%b\n' '${targets}' > /tmp/t && (vegeta attack -duration=60s -rate=${rate} -max-workers=30 -targets=/tmp/t | vegeta report -type=json || echo '{\"requests\":0,\"success\":0,\"latencies\":{\"50th\":0,\"95th\":0,\"99th\":0,\"max\":0,\"mean\":0},\"status_codes\":{}}')" \
+              -- sh -c "printf '%b\n' '${targets}' > /tmp/t && vegeta attack -duration=60s -rate=${rate} -max-workers=30 -targets=/tmp/t | vegeta report -type=json" \
               >/tmp/report.json 2>/dev/null || true
 
             if [[ -s /tmp/report.json ]]; then
