@@ -358,18 +358,18 @@ jobs:
             printf '%s,\n' "$(jq -nc --argjson m "${m}" --arg src "${src}" --arg pod "${POD}" --argjson cpu "${CPU}" --argjson mem "${MEM}" '{minute:$m,source:$src,pod:$pod,cpu_m:$cpu,mem_mi:$mem}')" >> /tmp/cpu-mem-samples.json
           }
 
-          # --- Scenarios: fixed-rate, 60s each, 15s warmup before each ---
-          # Wait for gateway listener to be ready before running vegeta.
+          # Wait for dataplane listener to be ready before running vegeta.
           # The Gateway resource may be Programmed but the dataplane needs
-          # time to reload config and open the listener port.
-          echo "Waiting for gateway listener readiness..."
-          for attempt in $(seq 1 30); do
-            if kubectl run "probe-${attempt}" -n nantian-gw --rm -i --restart=Never \
-              --image=busybox:stable -- sh -c "wget -qO- --timeout=2 http://${GW_SVC}/" 2>/dev/null; then
-              echo "Gateway listener ready (attempt ${attempt})"
+          # time to receive xDS config and open the listener port.
+          # Check that Endpoints are populated (dataplane passed health checks).
+          echo "Waiting for dataplane listener readiness..."
+          for attempt in $(seq 1 60); do
+            EP=$(kubectl get endpoints nantian-gw-perf-gw -n nantian-gw -o json 2>/dev/null | jq -r '.subsets[]?.addresses | length // 0')
+            if [[ "${EP}" -gt 0 ]]; then
+              echo "Dataplane listener ready (attempt ${attempt})"
               break
             fi
-            echo "  attempt ${attempt}/30: not ready, waiting..."
+            echo "  attempt ${attempt}/60: no endpoints, waiting..."
             sleep 2
           done
 
