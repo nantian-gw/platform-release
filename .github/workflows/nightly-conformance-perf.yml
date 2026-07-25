@@ -485,6 +485,23 @@ jobs:
             cp /tmp/vegeta-clean.json dist/vegeta-raw.json
           fi
 
+      - name: Perf diagnostics (on zero requests)
+        if: always()
+        run: |
+          TOTAL=$(jq -r '.total_requests // 0' dist/performance.json 2>/dev/null || echo "0")
+          if [[ "${TOTAL}" == "0" ]]; then
+            echo "=== Gateway perf-gw status ==="
+            kubectl get gateway perf-gw -n nantian-gw -o json 2>/dev/null | jq '{conditions: .status.conditions, addresses: .status.addresses}' || true
+            echo "=== Dataplane pod logs (last 20 lines) ==="
+            kubectl logs -n nantian-gw -l app=nantian-gw-dataplane --tail=20 2>/dev/null || true
+            echo "=== Controlplane pod logs (last 20 lines) ==="
+            kubectl logs -n nantian-gw -l app=nantian-gw-controlplane --tail=20 2>/dev/null || true
+            echo "=== Services ==="
+            kubectl get svc -n nantian-gw 2>/dev/null || true
+            echo "=== Endpoints ==="
+            kubectl get endpoints -n nantian-gw 2>/dev/null || true
+          fi
+
       - name: Upload performance artifact
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
