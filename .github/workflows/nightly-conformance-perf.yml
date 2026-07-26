@@ -405,11 +405,25 @@ jobs:
           kill $PF_PID 2>/dev/null || true
           wait $PF_PID 2>/dev/null || true
 
+          # Install vegeta on the CI runner
+          VEGETA_VERSION="12.12.0"
+          echo "Installing vegeta ${VEGETA_VERSION}..."
+          curl -fsSL "https://github.com/tsenart/vegeta/releases/download/v${VEGETA_VERSION}/vegeta_${VEGETA_VERSION}_linux_amd64.tar.gz" | tar xz -C /usr/local/bin vegeta
+          vegeta -version
+
+          # Start port-forward to gateway service so vegeta can reach it directly
+          echo "Starting port-forward to gateway..."
+          kubectl port-forward -n nantian-gw svc/nantian-gw-perf-gw 18080:80 &
+          PF_PID=$!
+          sleep 3
+
+          GW_TARGET="http://127.0.0.1:18080"
+
           declare -A SCENARIOS=(
-            ["simple"]="GET http://${GW_SVC}/"
-            ["path-users"]="GET http://${GW_SVC}/api/v1/users"
-            ["path-orders"]="GET http://${GW_SVC}/api/v1/orders"
-            ["header-data"]="GET http://${GW_SVC}/data\nX-Custom: perf-test"
+            ["simple"]="GET ${GW_TARGET}/"
+            ["path-users"]="GET ${GW_TARGET}/api/v1/users"
+            ["path-orders"]="GET ${GW_TARGET}/api/v1/orders"
+            ["header-data"]="GET ${GW_TARGET}/data\nX-Custom: perf-test"
           )
           declare -A RATES=(["simple"]=3000 ["path-users"]=2000 ["path-orders"]=2000 ["header-data"]=1000)
 
@@ -421,18 +435,10 @@ jobs:
             echo "=== Scenario: ${scenario} @ ${rate} RPS ==="
 
             echo "  Warmup (15s @ ${rate} RPS)..."
-            kubectl run "vegeta-warmup-${scenario}" -n nantian-gw \
-              --image=peterevans/vegeta:latest --rm --attach --restart=Never -i -q \
-              --overrides='{"spec":{"securityContext":{"runAsNonRoot":true,"runAsUser":65532,"seccompProfile":{"type":"RuntimeDefault"}},"containers":[{"name":"v","image":"peterevans/vegeta:latest","securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]}}}],"restartPolicy":"Never"}}' \
-              -- sh -c "printf '%b\n' '${targets}' > /tmp/t && vegeta attack -duration=15s -rate=${rate} -max-workers=30 -targets=/tmp/t" \
-              >/tmp/warmup.bin 2>/dev/null || true
+            printf '%b\n' "${targets}" | vegeta attack -duration=15s -rate=${rate} -max-workers=30 >/dev/null 2>/dev/null || true
 
             echo "  Measurement (60s @ ${rate} RPS)..."
-            kubectl run "vegeta-${scenario}" -n nantian-gw \
-              --image=peterevans/vegeta:latest --rm --attach --restart=Never -i -q \
-              --overrides='{"spec":{"securityContext":{"runAsNonRoot":true,"runAsUser":65532,"seccompProfile":{"type":"RuntimeDefault"}},"containers":[{"name":"v","image":"peterevans/vegeta:latest","securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]}}}],"restartPolicy":"Never"}}' \
-              -- sh -c "printf '%b\n' '${targets}' > /tmp/t && vegeta attack -duration=60s -rate=${rate} -max-workers=30 -targets=/tmp/t | vegeta report -type=json" \
-              >/tmp/report.json 2>/dev/null || true
+            printf '%b\n' "${targets}" | vegeta attack -duration=60s -rate=${rate} -max-workers=30 | vegeta report -type=json >/tmp/report.json 2>/dev/null || true
 
             if [[ -s /tmp/report.json ]]; then
               if jq -e . /tmp/report.json >/dev/null 2>&1; then
@@ -452,6 +458,8 @@ jobs:
             capture_sample "$((MINUTE++))"
             sleep 3
           done
+
+          kill $PF_PID 2>/dev/null || true
 
           # Produce clean output
           cp /tmp/vegeta-results.json /tmp/vegeta-clean.json 2>/dev/null || true
