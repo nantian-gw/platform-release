@@ -419,6 +419,23 @@ jobs:
 
           GW_TARGET="http://127.0.0.1:18080"
 
+          ensure_connection() {
+            local max_attempts=5
+            for i in $(seq 1 ${max_attempts}); do
+              if curl -sSf --max-time 3 "${GW_TARGET}/" >/dev/null 2>&1; then
+                return 0
+              fi
+              echo "  Reconnect attempt ${i}/${max_attempts}: restarting port-forward..."
+              kill $PF_PID 2>/dev/null || true
+              wait $PF_PID 2>/dev/null || true
+              kubectl port-forward -n nantian-gw svc/nantian-gw-perf-gw 18080:80 &
+              PF_PID=$!
+              sleep 3
+            done
+            echo "  FAILED: unable to establish connection after ${max_attempts} attempts"
+            return 1
+          }
+
           declare -A SCENARIOS=(
             ["simple"]="GET ${GW_TARGET}/"
             ["path-users"]="GET ${GW_TARGET}/api/v1/users"
@@ -433,12 +450,17 @@ jobs:
             rate="${RATES[$scenario]}"
             targets="${SCENARIOS[$scenario]}"
             echo "=== Scenario: ${scenario} @ ${rate} RPS ==="
+            ensure_connection || break
 
             echo "  Warmup (15s @ ${rate} RPS)..."
-            printf '%b\n' "${targets}" | vegeta attack -duration=15s -rate=${rate} -max-workers=30 >/dev/null 2>/dev/null || true
+            printf '%b\n' "${targets}" | vegeta attack -duration=15s -rate=${rate} -max-workers=30 >/dev/null 2>/tmp/vegeta-warmup-err.log || {
+              echo "  WARN: warmup failed (exit=$?), stderr:"; cat /tmp/vegeta-warmup-err.log
+            }
 
             echo "  Measurement (60s @ ${rate} RPS)..."
-            printf '%b\n' "${targets}" | vegeta attack -duration=60s -rate=${rate} -max-workers=30 | vegeta report -type=json >/tmp/report.json 2>/dev/null || true
+            printf '%b\n' "${targets}" | vegeta attack -duration=60s -rate=${rate} -max-workers=30 2>/tmp/vegeta-measure-err.log | vegeta report -type=json >/tmp/report.json 2>/tmp/vegeta-report-err.log || {
+              echo "  WARN: measurement failed (exit=$?), stderr:"; cat /tmp/vegeta-measure-err.log; cat /tmp/vegeta-report-err.log
+            }
 
             if [[ -s /tmp/report.json ]]; then
               if jq -e . /tmp/report.json >/dev/null 2>&1; then
@@ -462,10 +484,15 @@ jobs:
           # Saturation scenario: unbounded concurrency to measure max throughput.
           # No -rate flag — vegeta drives as many requests as possible with 50 workers.
           echo "=== Scenario: saturation (max-RPS) ==="
+          if ensure_connection; then
           echo "  Warmup (15s)..."
-          printf '%b\n' "GET ${GW_TARGET}/" | vegeta attack -duration=15s -max-workers=50 >/dev/null 2>/dev/null || true
+          printf '%b\n' "GET ${GW_TARGET}/" | vegeta attack -duration=15s -max-workers=50 >/dev/null 2>/tmp/vegeta-sat-warmup-err.log || {
+            echo "  WARN: saturation warmup failed (exit=$?), stderr:"; cat /tmp/vegeta-sat-warmup-err.log
+          }
           echo "  Measurement (60s)..."
-          printf '%b\n' "GET ${GW_TARGET}/" | vegeta attack -duration=60s -max-workers=50 | vegeta report -type=json >/tmp/saturation-report.json 2>/dev/null || true
+          printf '%b\n' "GET ${GW_TARGET}/" | vegeta attack -duration=60s -max-workers=50 2>/tmp/vegeta-sat-measure-err.log | vegeta report -type=json >/tmp/saturation-report.json 2>/tmp/vegeta-sat-report-err.log || {
+            echo "  WARN: saturation measurement failed (exit=$?), stderr:"; cat /tmp/vegeta-sat-measure-err.log; cat /tmp/vegeta-sat-report-err.log
+          }
 
           if [[ -s /tmp/saturation-report.json ]] && jq -e . /tmp/saturation-report.json >/dev/null 2>&1; then
             SAT_RPS=$(jq -r '(.requests / (.latencies.total / 1000000000) * 1000 | floor) / 1000' /tmp/saturation-report.json 2>/dev/null || echo "0")
@@ -478,6 +505,11 @@ jobs:
           fi
           capture_sample "$((MINUTE++))"
           echo "SAT_RPS=${SAT_RPS}" >> "$GITHUB_ENV"
+
+          else
+            echo "  SKIPPED: no connectivity"
+            SAT_RPS="0"
+          fi
 
           kill $PF_PID 2>/dev/null || true
 
