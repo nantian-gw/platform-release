@@ -459,6 +459,26 @@ jobs:
             sleep 3
           done
 
+          # Saturation scenario: unbounded concurrency to measure max throughput.
+          # No -rate flag — vegeta drives as many requests as possible with 50 workers.
+          echo "=== Scenario: saturation (max-RPS) ==="
+          echo "  Warmup (15s)..."
+          printf '%b\n' "GET ${GW_TARGET}/" | vegeta attack -duration=15s -max-workers=50 >/dev/null 2>/dev/null || true
+          echo "  Measurement (60s)..."
+          printf '%b\n' "GET ${GW_TARGET}/" | vegeta attack -duration=60s -max-workers=50 | vegeta report -type=json >/tmp/saturation-report.json 2>/dev/null || true
+
+          if [[ -s /tmp/saturation-report.json ]] && jq -e . /tmp/saturation-report.json >/dev/null 2>&1; then
+            SAT_RPS=$(jq -r '(.requests / (.latencies.total / 1000000000) * 1000 | floor) / 1000' /tmp/saturation-report.json 2>/dev/null || echo "0")
+            SAT_REQ=$(jq -r '.requests // 0' /tmp/saturation-report.json)
+            SAT_P99=$(jq -r '(.latencies."99th" / 1000000 | floor) // 0' /tmp/saturation-report.json)
+            echo "  OK: ${SAT_REQ} req, throughput=${SAT_RPS} RPS, p99=${SAT_P99}ms"
+          else
+            SAT_RPS="0"
+            echo "  FAILED: no saturation report"
+          fi
+          capture_sample "$((MINUTE++))"
+          echo "SAT_RPS=${SAT_RPS}" >> "$GITHUB_ENV"
+
           kill $PF_PID 2>/dev/null || true
 
           # Produce clean output
@@ -502,8 +522,8 @@ jobs:
           {
             "tool": "vegeta",
             "target": "dataplane via Gateway (multi-scenario fixed-rate)",
-            "methodology": "4 scenarios at fixed rates: simple(3000rps), path-users(2000rps), path-orders(2000rps), header-data(1000rps). 15s warmup + 60s measurement per scenario.",
-            "duration_sec": 300,
+            "methodology": "4 fixed-rate scenarios (15s warmup + 60s measurement each) + 1 saturation scenario (no rate limit, 50 workers, 15s warmup + 60s measurement). saturation_throughput_rps is the max throughput from the saturation run.",
+            "duration_sec": 375,
             "total_requests": ${TOTAL_REQ},
             "success_rate": ${SUCCESS_RATE},
             "cpu": {
@@ -515,6 +535,7 @@ jobs:
               "max_mi": ${MEM_MAX}
             },
             "scenarios": ${SCENARIOS},
+            "saturation_throughput_rps": ${SAT_RPS:-0},
             "cpu_mem_samples": ${SAMPLES}
           }
           JSON

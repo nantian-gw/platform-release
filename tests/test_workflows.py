@@ -36,9 +36,10 @@ def test_nightly_performance_uses_warmup_before_measured_vegeta_run() -> None:
     vegeta_step = next(step for step in steps if step.get("id") == "vegeta")
     script = vegeta_step["run"]
 
-    assert "vegeta attack -duration=15s" in script  # warmup per scenario
-    assert "vegeta attack -duration=60s" in script  # measurement per scenario
+    assert "vegeta attack -duration=15s" in script  # warmup (4 fixed-rate + 1 saturation)
+    assert "vegeta attack -duration=60s" in script  # measurement (4 fixed-rate + 1 saturation)
     assert "Warmup" in script
+    assert "saturation" in script  # saturation scenario present
 
 
 def test_nightly_performance_json_records_warmup_and_measurement_windows() -> None:
@@ -47,9 +48,10 @@ def test_nightly_performance_json_records_warmup_and_measurement_windows() -> No
     merge_step = next(step for step in steps if step.get("name") == "Merge results")
     script = merge_step["run"]
 
-    assert '"duration_sec": 300' in script  # 4 scenarios × ~75s each
+    assert '"duration_sec": 375' in script  # 5 scenarios × ~75s each
     assert '"methodology"' in script
     assert '"scenarios"' in script
+    assert '"saturation_throughput_rps"' in script
 
 
 def test_nightly_summary_lists_only_present_raw_artifacts() -> None:
