@@ -1,0 +1,4 @@
+{"scenario":"simple","rate":3000,"requests":179921,"success":1,"p50":8,"p95":14,"p99":19,"max":74,"mean":8,"status_codes":{"200":179921}}
+{"scenario":"path-users","rate":2000,"requests":120000,"success":1,"p50":2,"p95":6,"p99":11,"max":66,"mean":3,"status_codes":{"200":120000}}
+{"scenario":"path-orders","rate":2000,"requests":120000,"success":1,"p50":2,"p95":6,"p99":12,"max":71,"mean":3,"status_codes":{"200":120000}}
+{"scenario":"header-data","rate":1000,"requests":60000,"success":1,"p50":0,"p95":1,"p99":3,"max":76,"mean":1,"status_codes":{"200":60000}}
