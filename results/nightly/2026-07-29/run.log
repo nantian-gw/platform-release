@@ -1,0 +1,5 @@
+# github.com/nantian-gw/gateway/conformance [github.com/nantian-gw/gateway/conformance.test]
+conformance/conformance_test.go:41:26: options.RoundTripper.MaxEventsToWaitFor undefined (type roundtripper.RoundTripper has no field or method MaxEventsToWaitFor)
+conformance/conformance_test.go:42:24: options.RoundTripper.MaxEventsToWaitFor undefined (type roundtripper.RoundTripper has no field or method MaxEventsToWaitFor)
+FAIL	github.com/nantian-gw/gateway/conformance [build failed]
+FAIL
