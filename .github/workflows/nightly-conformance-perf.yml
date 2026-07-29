@@ -60,12 +60,14 @@ jobs:
           docker pull "${CONTROLPLANE_IMAGE}"
           docker pull "${DATAPLANE_IMAGE}"
           docker pull "${DASHBOARD_IMAGE}"
+          docker pull registry.k8s.io/gateway-api/conformance/echo-basic:v0.1.0 || true
 
       - name: Load images into kind
         run: |
           kind load docker-image "${CONTROLPLANE_IMAGE}" --name "${CLUSTER_NAME}"
           kind load docker-image "${DATAPLANE_IMAGE}" --name "${CLUSTER_NAME}"
           kind load docker-image "${DASHBOARD_IMAGE}" --name "${CLUSTER_NAME}"
+          kind load docker-image registry.k8s.io/gateway-api/conformance/echo-basic:v0.1.0 --name "${CLUSTER_NAME}" || true
 
       - name: Deploy Nantian Gateway
         working-directory: gateway
