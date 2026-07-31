@@ -213,14 +213,14 @@ jobs:
         run: |
           docker pull "${CONTROLPLANE_IMAGE}"
           docker pull "${DATAPLANE_IMAGE}"
-          docker pull gcr.io/k8s-staging-gateway-api/echo-basic:v20260204-monthly-2026.01-60-g28382302
+          docker pull registry.k8s.io/gateway-api/conformance/echo-basic:v0.1.0
           docker pull peterevans/vegeta:latest
 
       - name: Load images into kind
         run: |
           kind load docker-image "${CONTROLPLANE_IMAGE}" --name "${CLUSTER_NAME}"
           kind load docker-image "${DATAPLANE_IMAGE}" --name "${CLUSTER_NAME}"
-          kind load docker-image gcr.io/k8s-staging-gateway-api/echo-basic:v20260204-monthly-2026.01-60-g28382302 --name "${CLUSTER_NAME}"
+          kind load docker-image registry.k8s.io/gateway-api/conformance/echo-basic:v0.1.0 --name "${CLUSTER_NAME}"
           kind load docker-image peterevans/vegeta:latest --name "${CLUSTER_NAME}"
 
       - name: Deploy Nantian Gateway
@@ -237,7 +237,7 @@ jobs:
 
       - name: Deploy backend + Gateway (multi-path)
         run: |
-          ECHO="gcr.io/k8s-staging-gateway-api/echo-basic:v20260204-monthly-2026.01-60-g28382302"
+          ECHO="registry.k8s.io/gateway-api/conformance/echo-basic:v0.1.0"
           kubectl apply -f - <<YAML
           apiVersion: v1
           kind: Pod
