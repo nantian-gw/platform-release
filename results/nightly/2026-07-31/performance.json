@@ -1,0 +1,80 @@
+{
+  "tool": "vegeta",
+  "target": "dataplane via Gateway (multi-scenario fixed-rate)",
+  "methodology": "4 fixed-rate scenarios (15s warmup + 60s measurement each) + 1 saturation scenario (no rate limit, 50 workers, 15s warmup + 60s measurement). saturation_throughput_rps is the max throughput from the saturation run.",
+  "duration_sec": 375,
+  "total_requests": 479995,
+  "success_rate": 8.333420139793124e-06,
+  "cpu": {
+    "avg_m": 293.6,
+    "max_m": 490
+  },
+  "memory": {
+    "avg_mi": 94.4,
+    "max_mi": 96
+  },
+  "scenarios": [
+  {
+    "scenario": "simple",
+    "rate": 3000,
+    "requests": 179996,
+    "success": 1,
+    "p50": 7,
+    "p95": 14,
+    "p99": 18,
+    "max": 62,
+    "mean": 8,
+    "status_codes": {
+      "200": 179996
+    }
+  },
+  {
+    "scenario": "path-users",
+    "rate": 2000,
+    "requests": 120000,
+    "success": 1,
+    "p50": 2,
+    "p95": 5,
+    "p99": 11,
+    "max": 65,
+    "mean": 2,
+    "status_codes": {
+      "200": 120000
+    }
+  },
+  {
+    "scenario": "path-orders",
+    "rate": 2000,
+    "requests": 119999,
+    "success": 1,
+    "p50": 2,
+    "p95": 4,
+    "p99": 10,
+    "max": 97,
+    "mean": 2,
+    "status_codes": {
+      "200": 119999
+    }
+  },
+  {
+    "scenario": "header-data",
+    "rate": 1000,
+    "requests": 60000,
+    "success": 1,
+    "p50": 0,
+    "p95": 1,
+    "p99": 2,
+    "max": 62,
+    "mean": 1,
+    "status_codes": {
+      "200": 60000
+    }
+  }
+],
+  "saturation_throughput_rps": 918.339,
+  "cpu_mem_samples": [{"minute":0,"source":"kubelet-summary","pod":"nantian-gw-dataplane-c795db7ff-j946b","cpu_m":490,"mem_mi":94},
+{"minute":1,"source":"kubelet-summary","pod":"nantian-gw-dataplane-c795db7ff-j946b","cpu_m":384,"mem_mi":95},
+{"minute":2,"source":"kubelet-summary","pod":"nantian-gw-dataplane-c795db7ff-j946b","cpu_m":386,"mem_mi":96},
+{"minute":3,"source":"kubelet-summary","pod":"nantian-gw-dataplane-c795db7ff-j946b","cpu_m":195,"mem_mi":94},
+{"minute":4,"source":"kubelet-summary","pod":"nantian-gw-dataplane-c795db7ff-j946b","cpu_m":13,"mem_mi":93}]
+}

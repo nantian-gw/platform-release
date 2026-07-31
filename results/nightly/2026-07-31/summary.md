@@ -2,8 +2,16 @@
 
 | Test | Result |
 |------|--------|
-| Conformance | 5 passed, 0 failed, 0 skipped |
-| Performance | no data |
+| Conformance | 624 passed, 31 failed, 0 skipped |
+| Performance | 479995 total requests
+
+| Scenario | Rate | p50 | p99 | Requests |
+|----------|------|-----|-----|----------|
+| simple | 3000/s | 7ms | 18ms | 179996 |
+| path-users | 2000/s | 2ms | 11ms | 120000 |
+| path-orders | 2000/s | 2ms | 10ms | 119999 |
+| header-data | 1000/s | 0ms | 2ms | 60000 |
+ |
 
 Images tested:
 - Control Plane: ghcr.io/nantian-gw/nantian-controlplane:latest
@@ -11,4 +19,6 @@ Images tested:
 
 ## Raw Data Files
 - `run.log` — Full conformance test output
+- `performance.json` — Vegeta dataplane load test summary
+- `vegeta-raw.json` — Raw vegeta latency distribution
 
