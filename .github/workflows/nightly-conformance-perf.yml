@@ -124,6 +124,47 @@ jobs:
             grep -E '^    --- FAIL:' "$1" | sed -E 's/^    --- FAIL: //; s/ \(.*//' | sort -u
           }
 
+          # Upstream suite (v1.5.1) updates resources without retrying on
+          # resourceVersion conflicts, racing status writes from the control
+          # plane. This can fail individual tests AND abort suite setup
+          # entirely (observed on 2026-08-02 nightly: apply.go:308 conflict on
+          # app-backend-v1 during "Applying base manifests", zero tests ran).
+          # Patch apply.go with a conflict retry loop, same as gateway's own
+          # conformance workflow, so both passes are robust.
+          apply_file="$(go env GOMODCACHE)/sigs.k8s.io/gateway-api/conformance@v1.5.1/utils/kubernetes/apply.go"
+          chmod u+w "$apply_file"
+          python3 - "$apply_file" << 'PYEOF'
+          import sys
+          path = sys.argv[1]
+          content = open(path).read()
+          old = '\t\tuObj.SetResourceVersion(fetchedObj.GetResourceVersion())\n\t\ttlog.Logf(t, "Updating %s %s", uObj.GetName(), uObj.GetKind())\n\t\terr = c.Update(ctx, uObj)'
+          new = '''\t\tuObj.SetResourceVersion(fetchedObj.GetResourceVersion())
+          \t\ttlog.Logf(t, "Updating %s %s", uObj.GetName(), uObj.GetKind())
+          \t\tfor i := 0; i < 5; i++ {
+          \t\t\tif i > 0 {
+          \t\t\t\ttime.Sleep(time.Duration(1<<i) * 100 * time.Millisecond)
+          \t\t\t\tlatest := &unstructured.Unstructured{}
+          \t\t\t\tlatest.SetGroupVersionKind(uObj.GroupVersionKind())
+          \t\t\t\tif getErr := c.Get(ctx, client.ObjectKeyFromObject(uObj), latest); getErr != nil {
+          \t\t\t\t\terr = getErr
+          \t\t\t\t\tbreak
+          \t\t\t\t}
+          \t\t\t\tuObj.SetResourceVersion(latest.GetResourceVersion())
+          \t\t\t}
+          \t\t\terr = c.Update(ctx, uObj)
+          \t\t\tif err == nil || !apierrors.IsConflict(err) {
+          \t\t\t\tbreak
+          \t\t\t}
+          \t\t}'''
+          content = content.replace(old, new)
+          content = content.replace(
+              '"testing"',
+              '"testing"\n\t"time"'
+          )
+          open(path, 'w').write(content)
+          print("Patched apply.go with conflict retry")
+          PYEOF
+
           set +e
           # Authoritative full-suite pass. run.log is what drives the summary counts,
           # so it stays limited to this pass; the retry output goes to retry.log and
@@ -142,16 +183,34 @@ jobs:
             run_re="^${parent}\$/^($(IFS='|'; echo "${subs[*]}"))\$"
             echo "=== Retry pass: ${#retry_list[@]} failure(s) in one batched run ==="
             echo "    tests: ${retry_list[*]}"
+            # The first pass deletes the conformance namespace asynchronously on
+            # cleanup; wait for it to fully disappear before the retry pass
+            # recreates it, otherwise suite setup fails with
+            # "namespace ... is being terminated" and no test is actually retried.
+            kubectl wait --for=delete namespace/gateway-conformance-infra --timeout=300s || true
             go test -tags=conformance -count=1 -v -timeout 20m ./conformance/ \
               -run "${run_re}" \
               -args "${args[@]}" -report-output dist/conformance/retry-report.yaml 2>&1 \
               | tee dist/conformance/retry.log
-            passed_on_retry=$(comm -23 \
-              <(printf '%s\n' "${retry_list[@]}" | sort -u) \
-              <(failed_tests dist/conformance/retry.log))
-            if [[ -n "${passed_on_retry}" ]]; then
+            retry_status=${PIPESTATUS[0]}
+            # Only classify flakes when the retry pass actually exercised the
+            # failing tests. If the retry itself died before running them (e.g.
+            # suite setup failure), failed_tests is empty and the result is
+            # uninformative; never mark anything as flaky on that basis.
+            retry_fails=$(failed_tests dist/conformance/retry.log)
+            if [[ ${retry_status} -eq 0 ]]; then
               echo "=== Passed on retry (flaky, not deterministic): ==="
-              printf '  %s\n' ${passed_on_retry}
+              printf '  %s\n' "${retry_list[@]}" | sort -u
+            elif [[ -n "${retry_fails}" ]]; then
+              passed_on_retry=$(comm -23 \
+                <(printf '%s\n' "${retry_list[@]}" | sort -u) \
+                <(printf '%s\n' "${retry_fails}"))
+              if [[ -n "${passed_on_retry}" ]]; then
+                echo "=== Passed on retry (flaky, not deterministic): ==="
+                printf '  %s\n' ${passed_on_retry}
+              fi
+            else
+              echo "=== Retry pass failed before running tests (suite setup error); flake classification skipped ==="
             fi
           fi
 
