@@ -142,16 +142,34 @@ jobs:
             run_re="^${parent}\$/^($(IFS='|'; echo "${subs[*]}"))\$"
             echo "=== Retry pass: ${#retry_list[@]} failure(s) in one batched run ==="
             echo "    tests: ${retry_list[*]}"
+            # The first pass deletes the conformance namespace asynchronously on
+            # cleanup; wait for it to fully disappear before the retry pass
+            # recreates it, otherwise suite setup fails with
+            # "namespace ... is being terminated" and no test is actually retried.
+            kubectl wait --for=delete namespace/gateway-conformance-infra --timeout=300s || true
             go test -tags=conformance -count=1 -v -timeout 20m ./conformance/ \
               -run "${run_re}" \
               -args "${args[@]}" -report-output dist/conformance/retry-report.yaml 2>&1 \
               | tee dist/conformance/retry.log
-            passed_on_retry=$(comm -23 \
-              <(printf '%s\n' "${retry_list[@]}" | sort -u) \
-              <(failed_tests dist/conformance/retry.log))
-            if [[ -n "${passed_on_retry}" ]]; then
+            retry_status=${PIPESTATUS[0]}
+            # Only classify flakes when the retry pass actually exercised the
+            # failing tests. If the retry itself died before running them (e.g.
+            # suite setup failure), failed_tests is empty and the result is
+            # uninformative; never mark anything as flaky on that basis.
+            retry_fails=$(failed_tests dist/conformance/retry.log)
+            if [[ ${retry_status} -eq 0 ]]; then
               echo "=== Passed on retry (flaky, not deterministic): ==="
-              printf '  %s\n' ${passed_on_retry}
+              printf '  %s\n' "${retry_list[@]}" | sort -u
+            elif [[ -n "${retry_fails}" ]]; then
+              passed_on_retry=$(comm -23 \
+                <(printf '%s\n' "${retry_list[@]}" | sort -u) \
+                <(printf '%s\n' "${retry_fails}"))
+              if [[ -n "${passed_on_retry}" ]]; then
+                echo "=== Passed on retry (flaky, not deterministic): ==="
+                printf '  %s\n' ${passed_on_retry}
+              fi
+            else
+              echo "=== Retry pass failed before running tests (suite setup error); flake classification skipped ==="
             fi
           fi
 
