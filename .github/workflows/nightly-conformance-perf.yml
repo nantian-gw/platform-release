@@ -594,7 +594,7 @@ jobs:
 
           # Aggregate summary stats across all scenarios
           TOTAL_REQ=$(echo "${SCENARIOS}" | jq '[.[].requests] | add // 0')
-          SUCCESS_RATE=$(echo "${SCENARIOS}" | jq '([.[].requests] | add) as $total | if $total > 0 then ([.[].success] | add) / $total else 0 end')
+          SUCCESS_RATE=$(echo "${SCENARIOS}" | jq '[.[] | .status_codes | to_entries | map(select(.key | startswith("2")) | .value) | add] | add as $s | ([.[].requests] | add) as $t | if $t > 0 then $s / $t else 0 end')
           # Defensive fallback in case jq failed (set +e active)
           TOTAL_REQ="${TOTAL_REQ:-0}"
           SUCCESS_RATE="${SUCCESS_RATE:-0}"
