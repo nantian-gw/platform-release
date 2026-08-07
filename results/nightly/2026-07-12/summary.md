@@ -2,24 +2,23 @@
 
 | Test | Result |
 |------|--------|
-| Conformance | 516 passed, 6 failed, 10 skipped |
-| Performance | 4693163 req @ 7821.9 RPS
+| Conformance | no data |
+| Performance | 7481569 req @ 12469.2 RPS
 
 | Percentile | Latency |
 |-----------|---------|
-| p50       | 4ms |
-| p90       | 9ms |
-| p95       | 11ms |
-| p99       | 15ms |
-| max       | 92ms |
-| mean      | 5ms | |
+| p50       | 2ms |
+| p90       | 5ms |
+| p95       | 6ms |
+| p99       | 9ms |
+| max       | 73ms |
+| mean      | 3ms | |
 
 Images tested:
 - Control Plane: ghcr.io/nantian-gw/nantian-controlplane:latest
 - Data Plane: ghcr.io/nantian-gw/dataplane:latest-amd64
 
 ## Raw Data Files
-- `run.log` — Full conformance test output
 - `performance.json` — Vegeta dataplane load test summary
 - `vegeta-raw.json` — Raw vegeta latency distribution
 
