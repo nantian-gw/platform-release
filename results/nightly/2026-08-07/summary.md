@@ -3,14 +3,14 @@
 | Test | Result |
 |------|--------|
 | Conformance | 594 passed, 0 failed, 24 skipped |
-| Performance | 479999 total requests
+| Performance | 479963 total requests
 
 | Scenario | Rate | p50 | p99 | Requests |
 |----------|------|-----|-----|----------|
-| simple | 3000/s | 0ms | 4ms | 180000 |
-| path-users | 2000/s | 0ms | 2ms | 119999 |
-| path-orders | 2000/s | 0ms | 2ms | 120000 |
-| header-data | 1000/s | 0ms | 1ms | 60000 |
+| simple | 3000/s | 8ms | 19ms | 179964 |
+| path-users | 2000/s | 3ms | 11ms | 119999 |
+| path-orders | 2000/s | 2ms | 12ms | 120000 |
+| header-data | 1000/s | 1ms | 3ms | 60000 |
  |
 
 Images tested:
