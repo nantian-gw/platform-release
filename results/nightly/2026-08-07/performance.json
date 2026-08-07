@@ -3,15 +3,15 @@
   "target": "dataplane via Gateway (multi-scenario fixed-rate)",
   "methodology": "4 fixed-rate scenarios (15s warmup + 60s measurement each) + 1 saturation scenario (no rate limit, 50 workers, 15s warmup + 60s measurement). saturation_throughput_rps is the max throughput from the saturation run.",
   "duration_sec": 375,
-  "total_requests": 479997,
+  "total_requests": 479999,
   "success_rate": 1,
   "cpu": {
-    "avg_m": 280,
-    "max_m": 457
+    "avg_m": 231.8,
+    "max_m": 398
   },
   "memory": {
-    "avg_mi": 95.6,
-    "max_mi": 97
+    "avg_mi": 93,
+    "max_mi": 95
   },
   "scenarios": [
   {
@@ -19,11 +19,11 @@
     "rate": 3000,
     "requests": 180000,
     "success": 1,
-    "p50": 7,
-    "p95": 14,
-    "p99": 18,
-    "max": 68,
-    "mean": 8,
+    "p50": 0,
+    "p95": 1,
+    "p99": 4,
+    "max": 57,
+    "mean": 1,
     "status_codes": {
       "200": 180000
     }
@@ -31,29 +31,29 @@
   {
     "scenario": "path-users",
     "rate": 2000,
-    "requests": 120000,
+    "requests": 119999,
     "success": 1,
-    "p50": 2,
-    "p95": 5,
-    "p99": 11,
-    "max": 67,
-    "mean": 3,
+    "p50": 0,
+    "p95": 0,
+    "p99": 2,
+    "max": 62,
+    "mean": 0,
     "status_codes": {
-      "200": 120000
+      "200": 119999
     }
   },
   {
     "scenario": "path-orders",
     "rate": 2000,
-    "requests": 119997,
+    "requests": 120000,
     "success": 1,
-    "p50": 2,
-    "p95": 5,
-    "p99": 11,
-    "max": 71,
-    "mean": 3,
+    "p50": 0,
+    "p95": 0,
+    "p99": 2,
+    "max": 62,
+    "mean": 0,
     "status_codes": {
-      "200": 119997
+      "200": 120000
     }
   },
   {
@@ -62,19 +62,19 @@
     "requests": 60000,
     "success": 1,
     "p50": 0,
-    "p95": 1,
-    "p99": 2,
-    "max": 78,
-    "mean": 1,
+    "p95": 0,
+    "p99": 1,
+    "max": 72,
+    "mean": 0,
     "status_codes": {
       "200": 60000
     }
   }
 ],
-  "saturation_throughput_rps": 900.548,
-  "cpu_mem_samples": [{"minute":0,"source":"kubelet-summary","pod":"nantian-gw-dataplane-c795db7ff-vrjcr","cpu_m":457,"mem_mi":97},
-{"minute":1,"source":"kubelet-summary","pod":"nantian-gw-dataplane-c795db7ff-vrjcr","cpu_m":368,"mem_mi":96},
-{"minute":2,"source":"kubelet-summary","pod":"nantian-gw-dataplane-c795db7ff-vrjcr","cpu_m":369,"mem_mi":97},
-{"minute":3,"source":"kubelet-summary","pod":"nantian-gw-dataplane-c795db7ff-vrjcr","cpu_m":194,"mem_mi":95},
-{"minute":4,"source":"kubelet-summary","pod":"nantian-gw-dataplane-c795db7ff-vrjcr","cpu_m":12,"mem_mi":93}]
+  "saturation_throughput_rps": 1102.327,
+  "cpu_mem_samples": [{"minute":0,"source":"kubelet-summary","pod":"nantian-gw-dataplane-c795db7ff-jqbhb","cpu_m":398,"mem_mi":95},
+{"minute":1,"source":"kubelet-summary","pod":"nantian-gw-dataplane-c795db7ff-jqbhb","cpu_m":294,"mem_mi":93},
+{"minute":2,"source":"kubelet-summary","pod":"nantian-gw-dataplane-c795db7ff-jqbhb","cpu_m":297,"mem_mi":94},
+{"minute":3,"source":"kubelet-summary","pod":"nantian-gw-dataplane-c795db7ff-jqbhb","cpu_m":159,"mem_mi":92},
+{"minute":4,"source":"kubelet-summary","pod":"nantian-gw-dataplane-c795db7ff-jqbhb","cpu_m":11,"mem_mi":91}]
 }
