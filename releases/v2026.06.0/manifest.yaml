@@ -1,0 +1,37 @@
+artifacts:
+  containerImages:
+    dataplane: ghcr.io/nantian-gw/dataplane@sha256:162a5c1b2166653b79684eb8ce25b0063c5d959d95e94e608f13eb04855c605f
+    gateway: ghcr.io/nantian-gw/nantian-controlplane@sha256:5bcb94c10a7bf6e83d89b31928cba7a620ed78e5530b057bfe0ea5af7d098379
+  helmChart:
+    name: nantian-gw
+    repo: https://chart.nantian.dev
+    version: 0.2.3
+baseRelease: null
+components:
+  dashboard:
+    commit: af29925bb822a7d492ebd4e12b7ea7979283d0ec
+    repo: https://github.com/nantian-gw/dashboard
+    tag: v2026.06.0-rc4
+  dataplane:
+    commit: 7d9f3fbf4ca4f60e30c10459c33e12a7df13bed2
+    repo: https://github.com/nantian-gw/dataplane
+    tag: v2026.06.0-rc4
+  gateway:
+    commit: add5375e957ac7ca6be325f9189715e10d695ceb
+    repo: https://github.com/nantian-gw/gateway
+    tag: v2026.06.0-rc4
+  helm-charts:
+    commit: 92e2f4cc3cb51f7da89c868cddf262473243d7e7
+    repo: https://github.com/nantian-gw/helm-charts
+    tag: v2026.06.0-rc4
+  proto:
+    commit: 775cbbb8535ba83869c7db0377568f03ca03a81a
+    repo: https://github.com/nantian-gw/proto
+    tag: v2026.06.0-rc4
+  website:
+    commit: f8aaf4c546d48fee5566d2717c1f373a02603f26
+    repo: https://github.com/nantian-gw/website
+    tag: v2026.06.0-rc4
+platformVersion: v2026.06.0
+releaseDate: '2026-06-18'
+status: released

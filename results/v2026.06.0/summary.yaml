@@ -1,0 +1,29 @@
+artifacts:
+  failure: command failed with exit code 2
+checks:
+  dashboard-check:
+    status: passed
+  dataplane-build:
+    status: passed
+  dataplane-clippy:
+    status: passed
+  dataplane-fmt:
+    status: passed
+  dataplane-test:
+    status: passed
+  gateway-api-conformance:
+    status: skipped-after-failure
+  gateway-build:
+    status: passed
+  gateway-test:
+    status: passed
+  helm-lint:
+    status: passed
+  install-validation:
+    status: failed
+  proto-generate:
+    status: passed
+  website-check:
+    status: passed
+platformVersion: v2026.06.0
+status: failed
