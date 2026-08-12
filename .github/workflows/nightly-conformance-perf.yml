@@ -280,9 +280,12 @@ jobs:
         working-directory: gateway
         run: scripts/ci/install-gateway-api-crds.sh
 
-      - name: Pull images
+      - name: Build current control-plane image
+        working-directory: gateway
+        run: scripts/ci/build-controlplane-image.sh
+
+      - name: Pull dataplane images
         run: |
-          docker pull "${CONTROLPLANE_IMAGE}"
           docker pull "${DATAPLANE_IMAGE}"
           docker pull registry.k8s.io/gateway-api/conformance/echo-basic:v0.1.0
           docker pull peterevans/vegeta:latest
