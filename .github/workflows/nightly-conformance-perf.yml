@@ -16,8 +16,8 @@ permissions:
 env:
   GATEWAY_API_VERSION: v1.5.1
   CONTROLPLANE_IMAGE: ghcr.io/nantian-gw/nantian-controlplane:ci-${{ github.sha }}
-  DATAPLANE_IMAGE: ghcr.io/nantian-gw/dataplane:latest-amd64
-  DASHBOARD_IMAGE: ghcr.io/nantian-gw/dashboard:latest
+  DATAPLANE_IMAGE: 
+  DASHBOARD_IMAGE: 
   TIMEOUT: "600s"
 
 jobs:
@@ -271,7 +271,6 @@ jobs:
           go-version-file: gateway/go.mod
           cache-dependency-path: gateway/go.sum
 
-      - name: Install Kind tooling
 
       - name: Create kind cluster
         working-directory: gateway
