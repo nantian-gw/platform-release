@@ -14,7 +14,7 @@
  |
 
 Images tested:
-- Control Plane: ghcr.io/nantian-gw/nantian-controlplane:latest
+- Control Plane: ghcr.io/nantian-gw/nantian-controlplane:ci-ccbf48fbc374f912ab1393c00a6c1a560cbd0432
 - Data Plane: ghcr.io/nantian-gw/dataplane:latest-amd64
 
 ## Raw Data Files
