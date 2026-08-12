@@ -271,6 +271,14 @@ jobs:
           go-version-file: gateway/go.mod
           cache-dependency-path: gateway/go.sum
 
+      - name: Resolve dependency images
+        working-directory: gateway
+        run: |
+          source scripts/ci/dependency-images.sh
+          {
+            echo "DATAPLANE_IMAGE=${DATAPLANE_IMAGE:-$DEFAULT_DATAPLANE_IMAGE}"
+            echo "DASHBOARD_IMAGE=${DASHBOARD_IMAGE:-$DEFAULT_DASHBOARD_IMAGE}"
+          } >>"${GITHUB_ENV}"
 
       - name: Create kind cluster
         working-directory: gateway
