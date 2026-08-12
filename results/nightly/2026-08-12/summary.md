@@ -14,8 +14,8 @@
  |
 
 Images tested:
-- Control Plane: ghcr.io/nantian-gw/nantian-controlplane:ci-ccbf48fbc374f912ab1393c00a6c1a560cbd0432
-- Data Plane: ghcr.io/nantian-gw/dataplane:latest-amd64
+- Control Plane: ghcr.io/nantian-gw/nantian-controlplane:ci-ddf107c3c98e0f5dd8ffde00580f837055df528c
+- Data Plane: 
 
 ## Raw Data Files
 - `run.log` — Full conformance test output
