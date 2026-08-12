@@ -15,7 +15,7 @@ permissions:
 
 env:
   GATEWAY_API_VERSION: v1.5.1
-  CONTROLPLANE_IMAGE: ghcr.io/nantian-gw/nantian-controlplane:latest
+  CONTROLPLANE_IMAGE: ghcr.io/nantian-gw/nantian-controlplane:ci-${{ github.sha }}
   DATAPLANE_IMAGE: ghcr.io/nantian-gw/dataplane:latest-amd64
   DASHBOARD_IMAGE: ghcr.io/nantian-gw/dashboard:latest
   TIMEOUT: "600s"
@@ -55,11 +55,15 @@ jobs:
         working-directory: gateway
         run: scripts/ci/install-gateway-api-crds.sh
 
-      - name: Pull latest images
+      - name: Pull dataplane and dashboard images
         run: |
-          docker pull "${CONTROLPLANE_IMAGE}"
           docker pull "${DATAPLANE_IMAGE}"
           docker pull "${DASHBOARD_IMAGE}"
+          docker pull registry.k8s.io/gateway-api/conformance/echo-basic:v0.1.0 || true
+
+      - name: Build current control-plane image
+        working-directory: gateway
+        run: scripts/ci/build-controlplane-image.sh
           docker pull registry.k8s.io/gateway-api/conformance/echo-basic:v0.1.0 || true
 
       - name: Load images into kind
