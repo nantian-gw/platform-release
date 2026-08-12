@@ -2,7 +2,7 @@
 
 | Test | Result |
 |------|--------|
-| Conformance | 5 passed, 0 failed, 0 skipped |
+| Conformance | 594 passed, 0 failed, 24 skipped |
 | Performance | 479981 total requests
 
 | Scenario | Rate | p50 | p99 | Requests |
@@ -14,7 +14,7 @@
  |
 
 Images tested:
-- Control Plane: ghcr.io/nantian-gw/nantian-controlplane:ci-25b49a170baa3953c61e7fd16eceb445e8580ece
+- Control Plane: ghcr.io/nantian-gw/nantian-controlplane:ci-e5f0a754b572caf07f3f618b8803730a2bdd2b1d
 - Data Plane: 
 
 ## Raw Data Files
