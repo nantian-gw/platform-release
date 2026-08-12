@@ -239,7 +239,7 @@ jobs:
 
       - name: Upload conformance artifact
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@v4
         with:
           name: conformance-results
           path: |
@@ -688,7 +688,7 @@ jobs:
 
       - name: Upload performance artifact
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@v4
         with:
           name: performance-results
           path: |
@@ -820,7 +820,7 @@ jobs:
 
       - name: Upload raw logs as artifacts
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@v4
         with:
           name: nightly-raw-logs
           path: |
