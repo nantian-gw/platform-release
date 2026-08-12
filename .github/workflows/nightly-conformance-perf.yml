@@ -116,9 +116,8 @@ jobs:
         id: conformance
         working-directory: gateway
         run: |
-          mkdir -p dist/conformance
-          report_path="dist/conformance/report.yaml"
-
+          mkdir -p "${PWD}/dist/conformance"
+          report_path="${PWD}/dist/conformance/report.yaml"
           args=(
             -gateway-class nantian-gw
             -report-output "$report_path"
@@ -205,8 +204,8 @@ jobs:
             kubectl wait --for=delete namespace/gateway-conformance-infra --timeout=300s || true
             go test -tags=conformance -count=1 -v -timeout 20m ./conformance/ \
               -run "${run_re}" \
-              -args "${args[@]}" -report-output dist/conformance/retry-report.yaml 2>&1 \
-              | tee dist/conformance/retry.log
+              -args "${args[@]}" -report-output "${PWD}/dist/conformance/retry-report.yaml" 2>&1 \
+              | tee "${PWD}/dist/conformance/retry.log"
             retry_status=${PIPESTATUS[0]}
             # Only classify flakes when the retry pass actually exercised the
             # failing tests. If the retry itself died before running them (e.g.
