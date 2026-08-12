@@ -42,6 +42,14 @@ jobs:
         with:
           go-version-file: gateway/go.mod
           cache-dependency-path: gateway/go.sum
+      - name: Resolve dependency images
+        working-directory: gateway
+        run: |
+          source scripts/ci/dependency-images.sh
+          {
+            echo "DATAPLANE_IMAGE=${DATAPLANE_IMAGE:-$DEFAULT_DATAPLANE_IMAGE}"
+            echo "DASHBOARD_IMAGE=${DASHBOARD_IMAGE:-$DEFAULT_DASHBOARD_IMAGE}"
+          } >>"${GITHUB_ENV}"
 
       - name: Install Kind tooling
         working-directory: gateway
@@ -264,8 +272,6 @@ jobs:
           cache-dependency-path: gateway/go.sum
 
       - name: Install Kind tooling
-        working-directory: gateway
-        run: scripts/ci/install-kind-tools.sh
 
       - name: Create kind cluster
         working-directory: gateway
