@@ -12,7 +12,7 @@ if [[ $# -ne 1 ]]; then
 fi
 
 platform_version="$1"
-version_pattern='^v[0-9]{4}\.[0-9]{2}\.[0-9]+(-rc[0-9]+)?$'
+version_pattern='^v[0-9]{4}\.[0-9]{2}\.[0-9]+(-(rc|alpha|beta)\.[0-9]+)?$'
 python_bin="${PYTHON_BIN:-$SCRIPT_DIR/../.venv/bin/python3}"
 
 if [[ ! "${platform_version}" =~ ${version_pattern} ]]; then
@@ -41,7 +41,11 @@ resolve_commit() {
   local tag="$2"
   local sha
 
+  # Try annotated tag first (^{}), fall back to lightweight tag.
   sha="$(git ls-remote --tags "${repo}" "refs/tags/${tag}^{}" | awk '{print $1}')"
+  if [[ -z "${sha}" ]]; then
+    sha="$(git ls-remote --tags "${repo}" "refs/tags/${tag}" | awk '{print $1}')"
+  fi
   if [[ -z "${sha}" ]]; then
     echo "failed to resolve tag ${tag} in ${repo}" >&2
     exit 1
@@ -51,7 +55,8 @@ resolve_commit() {
     exit 1
   fi
 
-  printf '%s\n' "${sha}"
+  printf '%s
+' "${sha}"
 }
 
 require_env GATEWAY_TAG

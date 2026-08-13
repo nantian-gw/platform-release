@@ -1,0 +1,7 @@
+platformVersion: v2026.08.0-alpha.1
+compatibility:
+  gateway:
+    dataplane: v2026.08.0-alpha.1
+    proto: v2026.08.0-alpha.1
+  helmChart:
+    chartVersion: 0.4.0-alpha.1

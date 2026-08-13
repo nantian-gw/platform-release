@@ -1,0 +1,30 @@
+platformVersion: v2026.08.0-alpha.1
+status: pending
+checks:
+  gateway-build:
+    status: pending
+  gateway-test:
+    status: pending
+  dataplane-build:
+    status: pending
+  dataplane-test:
+    status: pending
+  dataplane-clippy:
+    status: pending
+  dataplane-fmt:
+    status: pending
+  dataplane-build-release:
+    status: pending
+  proto-generate:
+    status: pending
+  dashboard-check:
+    status: pending
+  website-check:
+    status: pending
+  helm-lint:
+    status: pending
+  install-validation:
+    status: pending
+  gateway-api-conformance:
+    status: pending
+artifacts: {}
