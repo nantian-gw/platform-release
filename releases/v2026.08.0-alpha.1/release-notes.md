@@ -17,6 +17,10 @@ improvements across all components since the v2026.06.0 GA release.
 - **Lint hygiene**: goconst threshold adjusted, constants extracted in resource_kinds.go
 - **Dashboard**: Docker build fixed with correct .dockerignore context
 - **Dataplane**: Global allocator fix for benchmark tests
+- **Helm chart**: `registry.k8s.io/kubectl` for prereq-check, `featureMode=experimental` for AI/Wasm CRDs
+- **Docs**: Updated install docs to match actual defaults (installCRDs: true, tag from appVersion)
+- **Release notes**: Added experimental mode installation instructions
+
 
 ## Component Tags
 
@@ -33,4 +37,8 @@ improvements across all components since the v2026.06.0 GA release.
 helm repo add nantian-gw https://chart.nantian.dev
 helm repo update
 helm install nantian-gw nantian-gw/nantian-gw --version 0.4.0-alpha.1 --namespace nantian-gw --create-namespace
+
+# For AI Gateway, Wasm, and experimental features:
+# helm install nantian-gw nantian-gw/nantian-gw --version 0.4.0-alpha.1 \
+#   --namespace nantian-gw --create-namespace --set featureMode=experimental
 ```
