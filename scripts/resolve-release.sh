@@ -12,7 +12,7 @@ if [[ $# -ne 1 ]]; then
 fi
 
 platform_version="$1"
-version_pattern='^v[0-9]{4}\.[0-9]{2}\.[0-9]+(-(rc|alpha|beta)\.[0-9]+)?$'
+version_pattern='^v[0-9]{4}\.[0-9]{2}\.[0-9]+(-(rc|alpha|beta)\.?[0-9]+)?$'
 python_bin="${PYTHON_BIN:-$SCRIPT_DIR/../.venv/bin/python3}"
 
 if [[ ! "${platform_version}" =~ ${version_pattern} ]]; then
