@@ -1,0 +1,6 @@
+# sigs.k8s.io/gateway-api/conformance/utils/kubernetes
+../../../../go/pkg/mod/sigs.k8s.io/gateway-api/conformance@v1.5.1/utils/kubernetes/apply.go:30:2: time redeclared in this block
+	../../../../go/pkg/mod/sigs.k8s.io/gateway-api/conformance@v1.5.1/utils/kubernetes/apply.go:29:2: other declaration of time
+../../../../go/pkg/mod/sigs.k8s.io/gateway-api/conformance@v1.5.1/utils/kubernetes/apply.go:30:2: "time" imported and not used
+FAIL	github.com/nantian-gw/gateway/conformance [build failed]
+FAIL
