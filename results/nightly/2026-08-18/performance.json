@@ -1,0 +1,80 @@
+{
+  "tool": "vegeta",
+  "target": "dataplane via Gateway (multi-scenario fixed-rate)",
+  "methodology": "4 fixed-rate scenarios (15s warmup + 60s measurement each) + 1 saturation scenario (no rate limit, 50 workers, 15s warmup + 60s measurement). saturation_throughput_rps is the max throughput from the saturation run.",
+  "duration_sec": 375,
+  "total_requests": 479999,
+  "success_rate": 1,
+  "cpu": {
+    "avg_m": 248.2,
+    "max_m": 442
+  },
+  "memory": {
+    "avg_mi": 90,
+    "max_mi": 91
+  },
+  "scenarios": [
+  {
+    "scenario": "simple",
+    "rate": 3000,
+    "requests": 180001,
+    "success": 1,
+    "p50": 2,
+    "p95": 6,
+    "p99": 11,
+    "max": 75,
+    "mean": 2,
+    "status_codes": {
+      "200": 180001
+    }
+  },
+  {
+    "scenario": "path-users",
+    "rate": 2000,
+    "requests": 119999,
+    "success": 1,
+    "p50": 0,
+    "p95": 2,
+    "p99": 4,
+    "max": 52,
+    "mean": 1,
+    "status_codes": {
+      "200": 119999
+    }
+  },
+  {
+    "scenario": "path-orders",
+    "rate": 2000,
+    "requests": 120000,
+    "success": 1,
+    "p50": 0,
+    "p95": 2,
+    "p99": 4,
+    "max": 55,
+    "mean": 1,
+    "status_codes": {
+      "200": 120000
+    }
+  },
+  {
+    "scenario": "header-data",
+    "rate": 1000,
+    "requests": 59999,
+    "success": 1,
+    "p50": 0,
+    "p95": 1,
+    "p99": 1,
+    "max": 70,
+    "mean": 0,
+    "status_codes": {
+      "200": 59999
+    }
+  }
+],
+  "saturation_throughput_rps": 943,
+  "cpu_mem_samples": [{"minute":0,"source":"kubelet-summary","pod":"nantian-gw-dataplane-b859bf68f-srxrv","cpu_m":442,"mem_mi":91},
+{"minute":1,"source":"kubelet-summary","pod":"nantian-gw-dataplane-b859bf68f-srxrv","cpu_m":310,"mem_mi":91},
+{"minute":2,"source":"kubelet-summary","pod":"nantian-gw-dataplane-b859bf68f-srxrv","cpu_m":311,"mem_mi":90},
+{"minute":3,"source":"kubelet-summary","pod":"nantian-gw-dataplane-b859bf68f-srxrv","cpu_m":166,"mem_mi":89},
+{"minute":4,"source":"kubelet-summary","pod":"nantian-gw-dataplane-b859bf68f-srxrv","cpu_m":12,"mem_mi":89}]
+}
