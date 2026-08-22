@@ -40,7 +40,11 @@ tools/       Python helpers used by scripts and CI
 ```bash
 make setup
 make test
+make lint
+make doctor
 ```
+
+`make doctor` inspects the sibling component checkouts listed in `components/components.yaml`, reports dirty/ahead/behind state, and summarizes latest main-branch GitHub Actions status. Use `scripts/workspace-doctor.sh --no-actions --strict` when you need a local-only gate without GitHub API calls.
 
 From the repository root, after component tags and published artifacts exist,
 you can generate a candidate release tree, run validation, and render the
