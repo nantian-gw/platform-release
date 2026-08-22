@@ -1,0 +1,26 @@
+apiVersion: gateway.networking.k8s.io/v1
+date: "2026-08-22T03:05:50Z"
+gatewayAPIChannel: experimental
+gatewayAPIVersion: v1.5.1
+implementation:
+  contact:
+  - https://github.com/nantian-gw/gateway/issues
+  organization: Nantian Gateway
+  project: Nantian Gateway
+  url: https://github.com/nantian-gw/gateway
+  version: nightly
+kind: ConformanceReport
+mode: default
+profiles: null
+succeededProvisionalTests:
+- GRPCRouteNamedRule
+- GatewayInfrastructure
+- GatewayOptionalAddressValue
+- HTTPRoute303Redirect
+- HTTPRoute307Redirect
+- HTTPRoute308Redirect
+- HTTPRouteNamedRule
+- HTTPRouteRequestPercentageMirror
+- TLSRouteMixedTerminationSameNamespace
+- TLSRouteTerminateSimpleSameNamespace
+- UDPRoute
