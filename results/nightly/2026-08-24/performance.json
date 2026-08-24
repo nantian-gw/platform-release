@@ -1,0 +1,80 @@
+{
+  "tool": "vegeta",
+  "target": "dataplane via Gateway (multi-scenario fixed-rate)",
+  "methodology": "4 fixed-rate scenarios (15s warmup + 60s measurement each) + 1 saturation scenario (no rate limit, 50 workers, 15s warmup + 60s measurement). saturation_throughput_rps is the max throughput from the saturation run.",
+  "duration_sec": 375,
+  "total_requests": 449724,
+  "success_rate": 1,
+  "cpu": {
+    "avg_m": 297.2,
+    "max_m": 446
+  },
+  "memory": {
+    "avg_mi": 92.8,
+    "max_mi": 95
+  },
+  "scenarios": [
+  {
+    "scenario": "simple",
+    "rate": 3000,
+    "requests": 149725,
+    "success": 1,
+    "p50": 11,
+    "p95": 19,
+    "p99": 24,
+    "max": 86,
+    "mean": 11,
+    "status_codes": {
+      "200": 149725
+    }
+  },
+  {
+    "scenario": "path-users",
+    "rate": 2000,
+    "requests": 120000,
+    "success": 1,
+    "p50": 4,
+    "p95": 12,
+    "p99": 18,
+    "max": 58,
+    "mean": 5,
+    "status_codes": {
+      "200": 120000
+    }
+  },
+  {
+    "scenario": "path-orders",
+    "rate": 2000,
+    "requests": 119999,
+    "success": 1,
+    "p50": 5,
+    "p95": 12,
+    "p99": 18,
+    "max": 83,
+    "mean": 5,
+    "status_codes": {
+      "200": 119999
+    }
+  },
+  {
+    "scenario": "header-data",
+    "rate": 1000,
+    "requests": 60000,
+    "success": 1,
+    "p50": 1,
+    "p95": 2,
+    "p99": 4,
+    "max": 89,
+    "mean": 1,
+    "status_codes": {
+      "200": 60000
+    }
+  }
+],
+  "saturation_throughput_rps": 640.019,
+  "cpu_mem_samples": [{"minute":0,"source":"kubelet-summary","pod":"nantian-gw-dataplane-b859bf68f-mcmbs","cpu_m":446,"mem_mi":92},
+{"minute":1,"source":"kubelet-summary","pod":"nantian-gw-dataplane-b859bf68f-mcmbs","cpu_m":401,"mem_mi":95},
+{"minute":2,"source":"kubelet-summary","pod":"nantian-gw-dataplane-b859bf68f-mcmbs","cpu_m":405,"mem_mi":94},
+{"minute":3,"source":"kubelet-summary","pod":"nantian-gw-dataplane-b859bf68f-mcmbs","cpu_m":215,"mem_mi":92},
+{"minute":4,"source":"kubelet-summary","pod":"nantian-gw-dataplane-b859bf68f-mcmbs","cpu_m":19,"mem_mi":91}]
+}
