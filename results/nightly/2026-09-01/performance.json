@@ -1,0 +1,80 @@
+{
+  "tool": "vegeta",
+  "target": "dataplane via Gateway (multi-scenario fixed-rate)",
+  "methodology": "4 fixed-rate scenarios (15s warmup + 60s measurement each) + 1 saturation scenario (no rate limit, 50 workers, 15s warmup + 60s measurement). saturation_throughput_rps is the max throughput from the saturation run.",
+  "duration_sec": 375,
+  "total_requests": 479981,
+  "success_rate": 1,
+  "cpu": {
+    "avg_m": 297.8,
+    "max_m": 488
+  },
+  "memory": {
+    "avg_mi": 94.6,
+    "max_mi": 96
+  },
+  "scenarios": [
+  {
+    "scenario": "simple",
+    "rate": 3000,
+    "requests": 179981,
+    "success": 1,
+    "p50": 8,
+    "p95": 15,
+    "p99": 19,
+    "max": 59,
+    "mean": 9,
+    "status_codes": {
+      "200": 179981
+    }
+  },
+  {
+    "scenario": "path-users",
+    "rate": 2000,
+    "requests": 120000,
+    "success": 1,
+    "p50": 2,
+    "p95": 6,
+    "p99": 11,
+    "max": 81,
+    "mean": 3,
+    "status_codes": {
+      "200": 120000
+    }
+  },
+  {
+    "scenario": "path-orders",
+    "rate": 2000,
+    "requests": 120000,
+    "success": 1,
+    "p50": 2,
+    "p95": 6,
+    "p99": 11,
+    "max": 52,
+    "mean": 3,
+    "status_codes": {
+      "200": 120000
+    }
+  },
+  {
+    "scenario": "header-data",
+    "rate": 1000,
+    "requests": 60000,
+    "success": 1,
+    "p50": 0,
+    "p95": 1,
+    "p99": 2,
+    "max": 65,
+    "mean": 1,
+    "status_codes": {
+      "200": 60000
+    }
+  }
+],
+  "saturation_throughput_rps": 724.326,
+  "cpu_mem_samples": [{"minute":0,"source":"kubelet-summary","pod":"nantian-gw-dataplane-b859bf68f-9xxf6","cpu_m":488,"mem_mi":95},
+{"minute":1,"source":"kubelet-summary","pod":"nantian-gw-dataplane-b859bf68f-9xxf6","cpu_m":394,"mem_mi":94},
+{"minute":2,"source":"kubelet-summary","pod":"nantian-gw-dataplane-b859bf68f-9xxf6","cpu_m":393,"mem_mi":96},
+{"minute":3,"source":"kubelet-summary","pod":"nantian-gw-dataplane-b859bf68f-9xxf6","cpu_m":197,"mem_mi":95},
+{"minute":4,"source":"kubelet-summary","pod":"nantian-gw-dataplane-b859bf68f-9xxf6","cpu_m":17,"mem_mi":93}]
+}
