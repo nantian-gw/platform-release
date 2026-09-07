@@ -1,0 +1,80 @@
+{
+  "tool": "vegeta",
+  "target": "dataplane via Gateway (multi-scenario fixed-rate)",
+  "methodology": "4 fixed-rate scenarios (15s warmup + 60s measurement each) + 1 saturation scenario (no rate limit, 50 workers, 15s warmup + 60s measurement). saturation_throughput_rps is the max throughput from the saturation run.",
+  "duration_sec": 375,
+  "total_requests": 465748,
+  "success_rate": 1,
+  "cpu": {
+    "avg_m": 283,
+    "max_m": 457
+  },
+  "memory": {
+    "avg_mi": 92.4,
+    "max_mi": 95
+  },
+  "scenarios": [
+  {
+    "scenario": "simple",
+    "rate": 3000,
+    "requests": 165749,
+    "success": 1,
+    "p50": 10,
+    "p95": 18,
+    "p99": 23,
+    "max": 60,
+    "mean": 10,
+    "status_codes": {
+      "200": 165749
+    }
+  },
+  {
+    "scenario": "path-users",
+    "rate": 2000,
+    "requests": 120000,
+    "success": 1,
+    "p50": 3,
+    "p95": 7,
+    "p99": 12,
+    "max": 86,
+    "mean": 3,
+    "status_codes": {
+      "200": 120000
+    }
+  },
+  {
+    "scenario": "path-orders",
+    "rate": 2000,
+    "requests": 119999,
+    "success": 1,
+    "p50": 3,
+    "p95": 7,
+    "p99": 13,
+    "max": 75,
+    "mean": 3,
+    "status_codes": {
+      "200": 119999
+    }
+  },
+  {
+    "scenario": "header-data",
+    "rate": 1000,
+    "requests": 60000,
+    "success": 1,
+    "p50": 0,
+    "p95": 1,
+    "p99": 3,
+    "max": 64,
+    "mean": 1,
+    "status_codes": {
+      "200": 60000
+    }
+  }
+],
+  "saturation_throughput_rps": 684.953,
+  "cpu_mem_samples": [{"minute":0,"source":"kubelet-summary","pod":"nantian-gw-dataplane-7688d55b48-lk4hr","cpu_m":457,"mem_mi":95},
+{"minute":1,"source":"kubelet-summary","pod":"nantian-gw-dataplane-7688d55b48-lk4hr","cpu_m":367,"mem_mi":94},
+{"minute":2,"source":"kubelet-summary","pod":"nantian-gw-dataplane-7688d55b48-lk4hr","cpu_m":371,"mem_mi":94},
+{"minute":3,"source":"kubelet-summary","pod":"nantian-gw-dataplane-7688d55b48-lk4hr","cpu_m":203,"mem_mi":90},
+{"minute":4,"source":"kubelet-summary","pod":"nantian-gw-dataplane-7688d55b48-lk4hr","cpu_m":17,"mem_mi":89}]
+}
