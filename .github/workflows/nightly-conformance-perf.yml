@@ -224,6 +224,9 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      dataplane_image: ${{ steps.images.outputs.dataplane_image }}
+      dashboard_image: ${{ steps.images.outputs.dashboard_image }}
     env:
       CLUSTER_NAME: nightly-perf
     steps:
@@ -238,13 +241,20 @@ jobs:
           cache-dependency-path: gateway/go.sum
 
       - name: Resolve dependency images
+        id: images
         working-directory: gateway
         run: |
           source scripts/ci/dependency-images.sh
+          resolved_dataplane="${DATAPLANE_IMAGE:-$DEFAULT_DATAPLANE_IMAGE}"
+          resolved_dashboard="${DASHBOARD_IMAGE:-$DEFAULT_DASHBOARD_IMAGE}"
           {
-            echo "DATAPLANE_IMAGE=${DATAPLANE_IMAGE:-$DEFAULT_DATAPLANE_IMAGE}"
-            echo "DASHBOARD_IMAGE=${DASHBOARD_IMAGE:-$DEFAULT_DASHBOARD_IMAGE}"
+            echo "DATAPLANE_IMAGE=${resolved_dataplane}"
+            echo "DASHBOARD_IMAGE=${resolved_dashboard}"
           } >>"${GITHUB_ENV}"
+          {
+            echo "dataplane_image=${resolved_dataplane}"
+            echo "dashboard_image=${resolved_dashboard}"
+          } >>"${GITHUB_OUTPUT}"
 
       - name: Create kind cluster
         working-directory: gateway
@@ -321,7 +331,7 @@ jobs:
             - {name: http, port: 80,  protocol: HTTP}
             - {name: grpc, port: 7070, protocol: HTTP, allowedRoutes: {kinds: [{kind: "GRPCRoute"}]}}
           ---
-          # Route 1: simple catch-all (exercises fast-path)
+          # Route 1: multi-scenario HTTP coverage for routing and filter hot paths.
           apiVersion: gateway.networking.k8s.io/v1
           kind: HTTPRoute
           metadata: {name: perf-http, namespace: nantian-gw}
@@ -333,6 +343,32 @@ jobs:
             - matches: [{path: {type: PathPrefix, value: /api/v1/orders}}]
               backendRefs: [{name: perf-backend, port: 3000}]
             - matches: [{path: {type: PathPrefix, value: /data}}]
+              backendRefs: [{name: perf-backend, port: 3000}]
+            - matches:
+              - path: {type: PathPrefix, value: /headers}
+                headers: [{name: x-perf-tenant, value: acme}]
+              backendRefs: [{name: perf-backend, port: 3000}]
+            - matches: [{path: {type: PathPrefix, value: /filter/request}}]
+              filters:
+              - type: RequestHeaderModifier
+                requestHeaderModifier:
+                  set: [{name: x-perf-request-filter, value: applied}]
+              backendRefs: [{name: perf-backend, port: 3000}]
+            - matches: [{path: {type: PathPrefix, value: /filter/response}}]
+              filters:
+              - type: ResponseHeaderModifier
+                responseHeaderModifier:
+                  set: [{name: x-perf-response-filter, value: applied}]
+              backendRefs: [{name: perf-backend, port: 3000}]
+            - matches: [{path: {type: PathPrefix, value: /rewrite}}]
+              filters:
+              - type: URLRewrite
+                urlRewrite:
+                  path:
+                    type: ReplacePrefixMatch
+                    replacePrefixMatch: /api/v1/users
+              backendRefs: [{name: perf-backend, port: 3000}]
+            - matches: [{path: {type: PathPrefix, value: /body}}]
               backendRefs: [{name: perf-backend, port: 3000}]
             - backendRefs: [{name: perf-backend, port: 3000}]
           ---
@@ -486,29 +522,94 @@ jobs:
             return 1
           }
 
-          declare -A SCENARIOS=(
-            ["simple"]="GET ${GW_TARGET}/"
-            ["path-users"]="GET ${GW_TARGET}/api/v1/users"
-            ["path-orders"]="GET ${GW_TARGET}/api/v1/orders"
-            ["header-data"]="GET ${GW_TARGET}/data\nX-Custom: perf-test"
+          cat > /tmp/perf-post-body.json <<'JSON'
+          {"message":"nightly performance payload","items":[1,2,3,4,5],"metadata":{"source":"platform-release"}}
+          JSON
+
+          declare -A TARGET_FILES
+          write_target() {
+            local scenario="$1"
+            local file="/tmp/vegeta-target-${scenario}.txt"
+            TARGET_FILES["${scenario}"]="${file}"
+            cat >"${file}"
+          }
+
+          write_target simple <<TARGET
+          GET ${GW_TARGET}/
+          TARGET
+          write_target path-users <<TARGET
+          GET ${GW_TARGET}/api/v1/users
+          TARGET
+          write_target path-orders <<TARGET
+          GET ${GW_TARGET}/api/v1/orders
+          TARGET
+          write_target header-data <<TARGET
+          GET ${GW_TARGET}/data
+          X-Custom: perf-test
+          TARGET
+          write_target query-search <<TARGET
+          GET ${GW_TARGET}/api/v1/users?active=true&limit=50&sort=name
+          TARGET
+          write_target header-match <<TARGET
+          GET ${GW_TARGET}/headers
+          X-Perf-Tenant: acme
+          TARGET
+          write_target request-header-filter <<TARGET
+          GET ${GW_TARGET}/filter/request
+          TARGET
+          write_target response-header-filter <<TARGET
+          GET ${GW_TARGET}/filter/response
+          TARGET
+          write_target rewrite-prefix <<TARGET
+          GET ${GW_TARGET}/rewrite/profile
+          TARGET
+          write_target post-body <<TARGET
+          POST ${GW_TARGET}/body
+          Content-Type: application/json
+          @/tmp/perf-post-body.json
+          TARGET
+
+          SCENARIO_ORDER=(
+            simple
+            path-users
+            path-orders
+            header-data
+            query-search
+            header-match
+            request-header-filter
+            response-header-filter
+            rewrite-prefix
+            post-body
           )
-          declare -A RATES=(["simple"]=3000 ["path-users"]=2000 ["path-orders"]=2000 ["header-data"]=1000)
+          declare -A RATES=(
+            ["simple"]=3000
+            ["path-users"]=2000
+            ["path-orders"]=2000
+            ["header-data"]=1000
+            ["query-search"]=1000
+            ["header-match"]=1000
+            ["request-header-filter"]=1000
+            ["response-header-filter"]=1000
+            ["rewrite-prefix"]=1000
+            ["post-body"]=500
+          )
 
           : > /tmp/vegeta-results.json
           MINUTE=0
-          for scenario in simple path-users path-orders header-data; do
+          for scenario in "${SCENARIO_ORDER[@]}"; do
             rate="${RATES[$scenario]}"
-            targets="${SCENARIOS[$scenario]}"
+            target_file="${TARGET_FILES[$scenario]}"
             echo "=== Scenario: ${scenario} @ ${rate} RPS ==="
             ensure_connection || break
 
             echo "  Warmup (15s @ ${rate} RPS)..."
-            printf '%b\n' "${targets}" | vegeta attack -duration=15s -rate=${rate} -max-workers=30 >/dev/null 2>/tmp/vegeta-warmup-err.log || {
+            vegeta attack -duration=15s -rate="${rate}" -max-workers=30 <"${target_file}" >/dev/null 2>/tmp/vegeta-warmup-err.log || {
               echo "  WARN: warmup failed (exit=$?), stderr:"; cat /tmp/vegeta-warmup-err.log
             }
 
             echo "  Measurement (60s @ ${rate} RPS)..."
-            printf '%b\n' "${targets}" | vegeta attack -duration=60s -rate=${rate} -max-workers=30 2>/tmp/vegeta-measure-err.log | vegeta report -type=json >/tmp/report.json 2>/tmp/vegeta-report-err.log || {
+            rm -f /tmp/report.json
+            vegeta attack -duration=60s -rate="${rate}" -max-workers=30 <"${target_file}" 2>/tmp/vegeta-measure-err.log | vegeta report -type=json >/tmp/report.json 2>/tmp/vegeta-report-err.log || {
               echo "  WARN: measurement failed (exit=$?), stderr:"; cat /tmp/vegeta-measure-err.log; cat /tmp/vegeta-report-err.log
             }
 
@@ -535,26 +636,39 @@ jobs:
           # No -rate flag — vegeta drives as many requests as possible with 50 workers.
           echo "=== Scenario: saturation (max-RPS) ==="
           if ensure_connection; then
-          echo "  Warmup (15s)..."
-          printf '%b\n' "GET ${GW_TARGET}/" | vegeta attack -duration=15s -max-workers=50 >/dev/null 2>/tmp/vegeta-sat-warmup-err.log || {
-            echo "  WARN: saturation warmup failed (exit=$?), stderr:"; cat /tmp/vegeta-sat-warmup-err.log
-          }
-          echo "  Measurement (60s)..."
-          printf '%b\n' "GET ${GW_TARGET}/" | vegeta attack -duration=60s -max-workers=50 2>/tmp/vegeta-sat-measure-err.log | vegeta report -type=json >/tmp/saturation-report.json 2>/tmp/vegeta-sat-report-err.log || {
-            echo "  WARN: saturation measurement failed (exit=$?), stderr:"; cat /tmp/vegeta-sat-measure-err.log; cat /tmp/vegeta-sat-report-err.log
-          }
+            echo "  Warmup (15s)..."
+            printf '%b\n' "GET ${GW_TARGET}/" | vegeta attack -duration=15s -max-workers=50 >/dev/null 2>/tmp/vegeta-sat-warmup-err.log || {
+              echo "  WARN: saturation warmup failed (exit=$?), stderr:"; cat /tmp/vegeta-sat-warmup-err.log
+            }
+            echo "  Measurement (60s)..."
+            rm -f /tmp/saturation-report.json /tmp/vegeta-saturation.json
+            printf '%b\n' "GET ${GW_TARGET}/" | vegeta attack -duration=60s -max-workers=50 2>/tmp/vegeta-sat-measure-err.log | vegeta report -type=json >/tmp/saturation-report.json 2>/tmp/vegeta-sat-report-err.log || {
+              echo "  WARN: saturation measurement failed (exit=$?), stderr:"; cat /tmp/vegeta-sat-measure-err.log; cat /tmp/vegeta-sat-report-err.log
+            }
 
-          if [[ -s /tmp/saturation-report.json ]] && jq -e . /tmp/saturation-report.json >/dev/null 2>&1; then
-            SAT_RPS=$(jq -r '(.requests / (.latencies.total / 1000000000) * 1000 | floor) / 1000' /tmp/saturation-report.json 2>/dev/null || echo "0")
-            SAT_REQ=$(jq -r '.requests // 0' /tmp/saturation-report.json)
-            SAT_P99=$(jq -r '(.latencies."99th" / 1000000 | floor) // 0' /tmp/saturation-report.json)
-            echo "  OK: ${SAT_REQ} req, throughput=${SAT_RPS} RPS, p99=${SAT_P99}ms"
-          else
-            SAT_RPS="0"
-            echo "  FAILED: no saturation report"
-          fi
-          capture_sample "$((MINUTE++))"
-          echo "SAT_RPS=${SAT_RPS}" >> "$GITHUB_ENV"
+            if [[ -s /tmp/saturation-report.json ]] && jq -e . /tmp/saturation-report.json >/dev/null 2>&1; then
+              jq -c '
+                {
+                  requests: .requests,
+                  success: .success,
+                  throughput_rps: ((.throughput * 1000 | floor) / 1000),
+                  p50: (.latencies."50th" / 1000000 | floor),
+                  p95: (.latencies."95th" / 1000000 | floor),
+                  p99: (.latencies."99th" / 1000000 | floor),
+                  max: (.latencies.max / 1000000 | floor),
+                  mean: (.latencies.mean / 1000000 | floor),
+                  status_codes: .status_codes
+                }' /tmp/saturation-report.json > /tmp/vegeta-saturation.json
+              SAT_RPS=$(jq -r '.throughput_rps // 0' /tmp/vegeta-saturation.json)
+              SAT_REQ=$(jq -r '.requests // 0' /tmp/vegeta-saturation.json)
+              SAT_P99=$(jq -r '.p99 // 0' /tmp/vegeta-saturation.json)
+              echo "  OK: ${SAT_REQ} req, throughput=${SAT_RPS} RPS, p99=${SAT_P99}ms"
+            else
+              SAT_RPS="0"
+              echo "  FAILED: no saturation report"
+            fi
+            capture_sample "$((MINUTE++))"
+            echo "SAT_RPS=${SAT_RPS}" >> "$GITHUB_ENV"
 
           else
             echo "  SKIPPED: no connectivity"
@@ -581,7 +695,13 @@ jobs:
           # Defensive fallback for all interpolated values
           SCENARIOS="${SCENARIOS:-[]}"
 
-          # Aggregate summary stats across all scenarios
+          SATURATION="null"
+          if [[ -s /tmp/vegeta-saturation.json ]]; then
+            SATURATION=$(jq -c '.' /tmp/vegeta-saturation.json 2>/dev/null || echo "null")
+          fi
+          SAT_RPS=$(echo "${SATURATION}" | jq -r '.throughput_rps // 0' 2>/dev/null || echo 0)
+
+          # Aggregate summary stats across fixed-rate scenarios.
           TOTAL_REQ=$(echo "${SCENARIOS}" | jq '[.[].requests] | add // 0')
           SUCCESS_RATE=$(echo "${SCENARIOS}" | jq '([.[].status_codes | to_entries | map(select(.key | startswith("2")) | .value) | add] | add) as $s | ([.[].requests] | add) as $t | if $t > 0 then $s / $t else 0 end')
           # Defensive fallback in case jq failed (set +e active)
@@ -603,9 +723,9 @@ jobs:
           cat > dist/performance.json <<JSON
           {
             "tool": "vegeta",
-            "target": "dataplane via Gateway (multi-scenario fixed-rate)",
-            "methodology": "4 fixed-rate scenarios (15s warmup + 60s measurement each) + 1 saturation scenario (no rate limit, 50 workers, 15s warmup + 60s measurement). saturation_throughput_rps is the max throughput from the saturation run.",
-            "duration_sec": 375,
+            "target": "Data Plane via Gateway (expanded multi-scenario fixed-rate + saturation)",
+            "methodology": "10 fixed-rate scenarios (15s warmup + 60s measurement each) covering path routing, query strings, header matches, request/response header filters, URL rewrite, and request body proxying + 1 saturation scenario (no rate limit, 50 workers, 15s warmup + 60s measurement). saturation_throughput_rps is the max throughput from the saturation run.",
+            "duration_sec": 825,
             "total_requests": ${TOTAL_REQ},
             "success_rate": ${SUCCESS_RATE},
             "cpu": {
@@ -617,8 +737,14 @@ jobs:
               "max_mi": ${MEM_MAX}
             },
             "scenarios": ${SCENARIOS},
+            "saturation": ${SATURATION},
             "saturation_throughput_rps": ${SAT_RPS:-0},
-            "cpu_mem_samples": ${SAMPLES}
+            "cpu_mem_samples": ${SAMPLES},
+            "images": {
+              "control_plane": "${CONTROLPLANE_IMAGE}",
+              "data_plane": "${DATAPLANE_IMAGE}",
+              "dashboard": "${DASHBOARD_IMAGE}"
+            }
           }
           JSON
 
@@ -626,6 +752,9 @@ jobs:
 
           if [[ -s /tmp/vegeta-clean.json ]]; then
             cp /tmp/vegeta-clean.json dist/vegeta-raw.json
+          fi
+          if [[ -s /tmp/vegeta-saturation.json ]]; then
+            cp /tmp/vegeta-saturation.json dist/vegeta-saturation.json
           fi
 
       - name: Perf diagnostics (on zero requests)
@@ -661,6 +790,7 @@ jobs:
           path: |
             dist/performance.json
             dist/vegeta-raw.json
+            dist/vegeta-saturation.json
           if-no-files-found: warn
 
       - name: Cleanup
@@ -673,6 +803,9 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    env:
+      DATAPLANE_IMAGE: ${{ needs.performance.outputs.dataplane_image }}
+      DASHBOARD_IMAGE: ${{ needs.performance.outputs.dashboard_image }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
 
@@ -694,7 +827,7 @@ jobs:
           # instead of assuming a fixed artifacts/<name>/ layout.
           find_first() { find artifacts -type f -name "$1" 2>/dev/null | head -1 || true; }
 
-          for name in run.log report.yaml performance.json vegeta-raw.json; do
+          for name in run.log report.yaml performance.json vegeta-raw.json vegeta-saturation.json; do
             src=$(find_first "${name}")
             if [[ -n "${src}" ]]; then
               cp "${src}" "${RESULTS_DIR}/${name}"
@@ -713,7 +846,8 @@ jobs:
           append_raw_file "report.yaml" "Gateway API conformance report"
           append_raw_file "run.log" "Full conformance test output"
           append_raw_file "performance.json" "Vegeta dataplane load test summary"
-          append_raw_file "vegeta-raw.json" "Raw vegeta latency distribution"
+          append_raw_file "vegeta-raw.json" "Fixed-rate Vegeta scenario summaries"
+          append_raw_file "vegeta-saturation.json" "Saturation Vegeta max-throughput summary"
           if [[ -z "${raw_files}" ]]; then
             raw_files="- No raw data files were produced"$'\n'
           fi
@@ -727,26 +861,56 @@ jobs:
           fi
 
           PERF="no data"
+          PERFORMANCE_DETAILS=""
           if [[ -f "${RESULTS_DIR}/performance.json" ]]; then
             TOTAL=$(jq -r '.total_requests // "N/A"' "${RESULTS_DIR}/performance.json")
+            SUCCESS=$(jq -r '.success_rate // "N/A"' "${RESULTS_DIR}/performance.json")
+            SAT_RPS=$(jq -r '.saturation.throughput_rps // .saturation_throughput_rps // empty' "${RESULTS_DIR}/performance.json")
+            if [[ -n "${SAT_RPS}" && "${SAT_RPS}" != "null" ]]; then
+              PERF="${TOTAL} fixed-rate requests, success rate ${SUCCESS}, saturation ${SAT_RPS} RPS"
+            else
+              PERF="${TOTAL} fixed-rate requests, success rate ${SUCCESS}"
+            fi
+
             SCENARIO_TABLE=""
             while IFS= read -r row; do
               s=$(echo "$row" | jq -r '.scenario')
               r=$(echo "$row" | jq -r '.rate')
               p50=$(echo "$row" | jq -r '.p50')
+              p95=$(echo "$row" | jq -r '.p95')
               p99=$(echo "$row" | jq -r '.p99')
               req=$(echo "$row" | jq -r '.requests')
-              [[ "${s}" != "null" ]] && SCENARIO_TABLE="${SCENARIO_TABLE}| ${s} | ${r}/s | ${p50}ms | ${p99}ms | ${req} |"$'\n'
+              success=$(echo "$row" | jq -r '.success')
+              [[ "${s}" != "null" ]] && SCENARIO_TABLE="${SCENARIO_TABLE}| ${s} | ${r}/s | ${p50}ms | ${p95}ms | ${p99}ms | ${req} | ${success} |"$'\n'
             done < <(jq -c '.scenarios[]?' "${RESULTS_DIR}/performance.json" 2>/dev/null)
             if [[ -n "${SCENARIO_TABLE}" ]]; then
-              PERF="${TOTAL} total requests
-
-          | Scenario | Rate | p50 | p99 | Requests |
-          |----------|------|-----|-----|----------|
-          ${SCENARIO_TABLE}"
-            else
-              PERF="${TOTAL} total requests"
+              PERFORMANCE_DETAILS="${PERFORMANCE_DETAILS}## Performance Scenarios"$'\n\n'
+              PERFORMANCE_DETAILS="${PERFORMANCE_DETAILS}| Scenario | Rate | p50 | p95 | p99 | Requests | Success |"$'\n'
+              PERFORMANCE_DETAILS="${PERFORMANCE_DETAILS}|----------|------|-----|-----|-----|----------|---------|"$'\n'
+              PERFORMANCE_DETAILS="${PERFORMANCE_DETAILS}${SCENARIO_TABLE}"$'\n'
             fi
+
+            if jq -e '.saturation != null' "${RESULTS_DIR}/performance.json" >/dev/null 2>&1; then
+              sat_req=$(jq -r '.saturation.requests // "N/A"' "${RESULTS_DIR}/performance.json")
+              sat_success=$(jq -r '.saturation.success // "N/A"' "${RESULTS_DIR}/performance.json")
+              sat_p50=$(jq -r '.saturation.p50 // "N/A"' "${RESULTS_DIR}/performance.json")
+              sat_p95=$(jq -r '.saturation.p95 // "N/A"' "${RESULTS_DIR}/performance.json")
+              sat_p99=$(jq -r '.saturation.p99 // "N/A"' "${RESULTS_DIR}/performance.json")
+              sat_rps=$(jq -r '.saturation.throughput_rps // "N/A"' "${RESULTS_DIR}/performance.json")
+              PERFORMANCE_DETAILS="${PERFORMANCE_DETAILS}## Saturation"$'\n\n'
+              PERFORMANCE_DETAILS="${PERFORMANCE_DETAILS}| Throughput | p50 | p95 | p99 | Requests | Success |"$'\n'
+              PERFORMANCE_DETAILS="${PERFORMANCE_DETAILS}|------------|-----|-----|-----|----------|---------|"$'\n'
+              PERFORMANCE_DETAILS="${PERFORMANCE_DETAILS}| ${sat_rps} RPS | ${sat_p50}ms | ${sat_p95}ms | ${sat_p99}ms | ${sat_req} | ${sat_success} |"$'\n'
+            fi
+          fi
+
+          SUMMARY_CONTROLPLANE_IMAGE="${CONTROLPLANE_IMAGE:-}"
+          SUMMARY_DATAPLANE_IMAGE="${DATAPLANE_IMAGE:-}"
+          SUMMARY_DASHBOARD_IMAGE="${DASHBOARD_IMAGE:-}"
+          if [[ -f "${RESULTS_DIR}/performance.json" ]]; then
+            SUMMARY_CONTROLPLANE_IMAGE="${SUMMARY_CONTROLPLANE_IMAGE:-$(jq -r '.images.control_plane // empty' "${RESULTS_DIR}/performance.json" 2>/dev/null || true)}"
+            SUMMARY_DATAPLANE_IMAGE="${SUMMARY_DATAPLANE_IMAGE:-$(jq -r '.images.data_plane // empty' "${RESULTS_DIR}/performance.json" 2>/dev/null || true)}"
+            SUMMARY_DASHBOARD_IMAGE="${SUMMARY_DASHBOARD_IMAGE:-$(jq -r '.images.dashboard // empty' "${RESULTS_DIR}/performance.json" 2>/dev/null || true)}"
           fi
 
           cat > "${RESULTS_DIR}/summary.md" <<EOF
@@ -757,9 +921,10 @@ jobs:
           | Conformance | ${CONFORMANCE} |
           | Performance | ${PERF} |
 
-          Images tested:
-          - Control Plane: ${CONTROLPLANE_IMAGE}
-          - Data Plane: ${DATAPLANE_IMAGE}
+          ${PERFORMANCE_DETAILS}Images tested:
+          - Control Plane: ${SUMMARY_CONTROLPLANE_IMAGE}
+          - Data Plane: ${SUMMARY_DATAPLANE_IMAGE}
+          - Dashboard: ${SUMMARY_DASHBOARD_IMAGE}
 
           ## Raw Data Files
           ${raw_files}
@@ -793,6 +958,7 @@ jobs:
           path: |
             results/nightly/*/run.log
             results/nightly/*/vegeta-raw.json
+            results/nightly/*/vegeta-saturation.json
           retention-days: 90
           if-no-files-found: warn
 

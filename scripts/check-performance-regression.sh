@@ -6,9 +6,11 @@
 # drops below 99.9%.
 #
 # Multi-scenario fixed-rate tests measure compliance (can the gateway handle
-# the declared rate?). The saturation scenario (saturation_throughput_rps in
-# performance.json) measures max throughput with unbounded concurrency — this
-# is the primary throughput regression signal.
+# the declared rate?). The structured saturation.throughput_rps field measures
+# max throughput with unbounded concurrency and is the primary throughput
+# regression signal. Legacy saturation_throughput_rps values are ignored for
+# gating because older workflows derived them from cumulative request latency,
+# not Vegeta's measured wall-clock throughput.
 set -euo pipefail
 
 RESULTS_DIR="${RESULTS_DIR:-results/nightly}"
@@ -55,7 +57,14 @@ get_mem_avg() {
 }
 
 get_saturation_rps() {
-  jq -r '.saturation_throughput_rps // empty' "$1" 2>/dev/null
+  jq -r '.saturation.throughput_rps // empty' "$1" 2>/dev/null
+}
+
+mark_regression() {
+  if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+    echo "regression=true" >> "$GITHUB_OUTPUT"
+  fi
+  REGRESSION=true
 }
 
 today_p99=$(get_p99 "$today_file")
@@ -115,8 +124,7 @@ if [[ -n "$today_p99" && "$today_p99" != "null" && -n "$median_p99" ]]; then
   p99_change=$(awk "BEGIN {printf \"%.1f\", (($today_p99 - $median_p99) / $median_p99) * 100}")
   if (( $(awk "BEGIN {print ($p99_change > $P99_THRESHOLD)}") )); then
     echo "::error::P99 latency regression: +${p99_change}% (threshold: +${P99_THRESHOLD}%)"
-    echo "regression=true" >> "$GITHUB_OUTPUT"
-    REGRESSION=true
+    mark_regression
   else
     echo "P99 latency change: ${p99_change}% (within threshold)"
   fi
@@ -128,8 +136,7 @@ fi
 if [[ -n "$today_success" && "$today_success" != "null" ]]; then
   if (( $(awk "BEGIN {print ($today_success < 0.999)}") )); then
     echo "::error::Success rate dropped below 99.9%: ${today_success}"
-    echo "regression=true" >> "$GITHUB_OUTPUT"
-    REGRESSION=true
+    mark_regression
   else
     echo "Success rate: ${today_success} (>= 99.9%)"
   fi
@@ -140,8 +147,7 @@ if [[ -n "$today_cpu" && "$today_cpu" != "null" && -n "$median_cpu" && "$median_
   cpu_change=$(awk "BEGIN {printf \"%.1f\", (($today_cpu - $median_cpu) / $median_cpu) * 100}")
   if (( $(awk "BEGIN {print ($cpu_change > $CPU_THRESHOLD)}") )); then
     echo "::error::CPU regression: +${cpu_change}% (threshold: +${CPU_THRESHOLD}%)"
-    echo "regression=true" >> "$GITHUB_OUTPUT"
-    REGRESSION=true
+    mark_regression
   else
     echo "CPU change: ${cpu_change}% (within threshold)"
   fi
@@ -154,8 +160,7 @@ if [[ -n "$today_mem" && "$today_mem" != "null" && -n "$median_mem" && "$median_
   mem_change=$(awk "BEGIN {printf \"%.1f\", (($today_mem - $median_mem) / $median_mem) * 100}")
   if (( $(awk "BEGIN {print ($mem_change > $MEMORY_THRESHOLD)}") )); then
     echo "::error::Memory regression: +${mem_change}% (threshold: +${MEMORY_THRESHOLD}%)"
-    echo "regression=true" >> "$GITHUB_OUTPUT"
-    REGRESSION=true
+    mark_regression
   else
     echo "Memory change: ${mem_change}% (within threshold)"
   fi
@@ -169,8 +174,7 @@ if [[ -n "$today_tput" && "$today_tput" != "null" && -n "$median_tput" && "$medi
     tput_change=$(awk "BEGIN {printf \"%.1f\", (($median_tput - $today_tput) / $median_tput) * 100}")
     if (( $(awk "BEGIN {print ($tput_change > $THROUGHPUT_THRESHOLD)}") )); then
       echo "::error::Throughput regression: -${tput_change}% (threshold: -${THROUGHPUT_THRESHOLD}%)"
-      echo "regression=true" >> "$GITHUB_OUTPUT"
-      REGRESSION=true
+      mark_regression
     else
       echo "Throughput change: -${tput_change}% (within threshold)"
     fi
