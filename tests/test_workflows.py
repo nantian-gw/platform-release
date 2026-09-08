@@ -30,16 +30,42 @@ def test_nightly_performance_runs_after_conformance_even_on_failure() -> None:
     assert performance["if"] == "always()"
 
 
-def test_nightly_performance_uses_warmup_before_measured_vegeta_run() -> None:
+def test_nightly_performance_uses_expanded_measured_vegeta_matrix() -> None:
     data = load_workflow("nightly-conformance-perf.yml")
     steps = data["jobs"]["performance"]["steps"]
     vegeta_step = next(step for step in steps if step.get("id") == "vegeta")
     script = vegeta_step["run"]
 
-    assert "vegeta attack -duration=15s" in script  # warmup (4 fixed-rate + 1 saturation)
-    assert "vegeta attack -duration=60s" in script  # measurement (4 fixed-rate + 1 saturation)
-    assert "Warmup" in script
-    assert "saturation" in script  # saturation scenario present
+    assert "vegeta attack -duration=15s" in script  # warmup windows
+    assert "vegeta attack -duration=60s" in script  # measurement windows
+    assert "SCENARIO_ORDER=(" in script
+    for scenario in (
+        "simple",
+        "path-users",
+        "path-orders",
+        "header-data",
+        "query-search",
+        "header-match",
+        "request-header-filter",
+        "response-header-filter",
+        "rewrite-prefix",
+        "post-body",
+    ):
+        assert scenario in script
+    assert "GET ${GW_TARGET}/api/v1/orders" in script
+    assert "saturation" in script
+    assert "rm -f /tmp/report.json" in script
+
+
+def test_nightly_performance_route_fixture_exercises_order_path() -> None:
+    data = load_workflow("nightly-conformance-perf.yml")
+    steps = data["jobs"]["performance"]["steps"]
+    deploy_step = next(
+        step for step in steps if step.get("name") == "Deploy backend + Gateway (multi-path)"
+    )
+    script = deploy_step["run"]
+
+    assert "value: /api/v1/orders" in script
 
 
 def test_nightly_performance_json_records_warmup_and_measurement_windows() -> None:
@@ -48,10 +74,35 @@ def test_nightly_performance_json_records_warmup_and_measurement_windows() -> No
     merge_step = next(step for step in steps if step.get("name") == "Merge results")
     script = merge_step["run"]
 
-    assert '"duration_sec": 375' in script  # 5 scenarios × ~75s each
+    assert '"duration_sec": 825' in script  # 10 fixed-rate + 1 saturation scenario, ~75s each
     assert '"methodology"' in script
     assert '"scenarios"' in script
+    assert '"saturation"' in script
     assert '"saturation_throughput_rps"' in script
+    assert '"images"' in script
+
+
+def test_nightly_saturation_uses_vegeta_wall_clock_throughput() -> None:
+    data = load_workflow("nightly-conformance-perf.yml")
+    steps = data["jobs"]["performance"]["steps"]
+    vegeta_step = next(step for step in steps if step.get("id") == "vegeta")
+    script = vegeta_step["run"]
+
+    assert "throughput_rps: ((.throughput * 1000 | floor) / 1000)" in script
+    assert ".latencies.total" not in script
+
+
+def test_performance_regression_uses_structured_saturation_metric() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    script = (repo_root / "scripts/check-performance-regression.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert "Legacy saturation_throughput_rps values are ignored" in script
+    assert "jq -r '.saturation.throughput_rps // empty'" in script
+    assert "jq -r '.saturation_throughput_rps // empty'" not in script
+    assert "mark_regression()" in script
+    assert "${GITHUB_OUTPUT:-}" in script
 
 
 def test_nightly_summary_lists_only_present_raw_artifacts() -> None:
@@ -62,7 +113,38 @@ def test_nightly_summary_lists_only_present_raw_artifacts() -> None:
 
     assert "append_raw_file" in script
     assert 'append_raw_file "report.yaml"' in script
+    assert 'append_raw_file "vegeta-saturation.json"' in script
     assert "- `report.yaml` — Gateway API conformance report" not in script
+
+
+def test_nightly_performance_outputs_resolved_images_to_results_job() -> None:
+    data = load_workflow("nightly-conformance-perf.yml")
+    performance = data["jobs"]["performance"]
+    commit_results = data["jobs"]["commit-results"]
+    steps = performance["steps"]
+    image_step = next(step for step in steps if step.get("id") == "images")
+    script = image_step["run"]
+
+    assert performance["outputs"]["dataplane_image"] == "${{ steps.images.outputs.dataplane_image }}"
+    assert performance["outputs"]["dashboard_image"] == "${{ steps.images.outputs.dashboard_image }}"
+    assert "dataplane_image=${resolved_dataplane}" in script
+    assert "dashboard_image=${resolved_dashboard}" in script
+    assert commit_results["env"]["DATAPLANE_IMAGE"] == "${{ needs.performance.outputs.dataplane_image }}"
+    assert commit_results["env"]["DASHBOARD_IMAGE"] == "${{ needs.performance.outputs.dashboard_image }}"
+
+
+def test_nightly_summary_renders_performance_details_outside_result_table() -> None:
+    data = load_workflow("nightly-conformance-perf.yml")
+    steps = data["jobs"]["commit-results"]["steps"]
+    generator_step = next(step for step in steps if step.get("name") == "Generate nightly results")
+    script = generator_step["run"]
+
+    assert "## Performance Scenarios" in script
+    assert "## Saturation" in script
+    assert "| Performance | ${PERF} |" in script
+    assert "${PERFORMANCE_DETAILS}Images tested:" in script
+    assert "- Data Plane: ${SUMMARY_DATAPLANE_IMAGE}" in script
+    assert "- Dashboard: ${SUMMARY_DASHBOARD_IMAGE}" in script
 
 
 def test_nightly_performance_resource_sampler_falls_back_to_kubelet_summary() -> None:
