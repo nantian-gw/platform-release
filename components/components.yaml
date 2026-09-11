@@ -24,6 +24,10 @@ components:
     validate:
       - id: proto-generate
         run: make generate
+      - id: proto-lint
+        run: buf lint
+      - id: proto-format
+        run: buf format -d --exit-code
   dashboard:
     repo: https://github.com/nantian-gw/dashboard
     validate:
@@ -39,6 +43,8 @@ components:
     validate:
       - id: helm-lint
         run: helm lint charts/nantian-gw
+      - id: helm-template
+        run: helm template --debug charts/nantian-gw
 platformChecks:
   - id: install-validation
     repo: gateway
