@@ -76,8 +76,9 @@ them.
 
 Each `results/<platform-version>/` directory is release evidence:
 
-- `summary.yaml` is the machine-readable verdict
-- `test-matrix.md` is the rendered validation matrix
+- `summary.yaml` is the machine-readable verdict and records the exact command,
+  scope, and checkout key for every registered validation check
+- `test-matrix.md` is the rendered validation matrix, including command evidence
 - `conformance.md` is the rendered Gateway API conformance summary
 - `artifacts.yaml` indexes external evidence such as the GitHub Actions run URL
 
