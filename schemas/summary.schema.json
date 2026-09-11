@@ -39,6 +39,21 @@
               "failed",
               "skipped-after-failure"
             ]
+          },
+          "command": {
+            "type": "string",
+            "minLength": 1
+          },
+          "repo": {
+            "type": "string",
+            "minLength": 1
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "component",
+              "platform"
+            ]
           }
         }
       }

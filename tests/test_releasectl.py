@@ -20,6 +20,22 @@ def write_json(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload), encoding="utf-8")
 
 
+def assert_check_evidence(
+    check: dict,
+    *,
+    status: str,
+    command: str,
+    repo: str,
+    scope: str,
+) -> None:
+    assert check == {
+        "status": status,
+        "command": command,
+        "repo": repo,
+        "scope": scope,
+    }
+
+
 def registry_payload() -> dict:
     return {
         "components": {
@@ -93,11 +109,25 @@ def manifest_schema() -> dict:
 def summary_schema() -> dict:
     return {
         "type": "object",
+        "additionalProperties": False,
         "required": ["platformVersion", "status", "checks", "artifacts"],
         "properties": {
             "platformVersion": {"type": "string"},
             "status": {"type": "string"},
-            "checks": {"type": "object"},
+            "checks": {
+                "type": "object",
+                "additionalProperties": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["status"],
+                    "properties": {
+                        "status": {"type": "string"},
+                        "command": {"type": "string"},
+                        "repo": {"type": "string"},
+                        "scope": {"type": "string"},
+                    },
+                },
+            },
             "artifacts": {"type": "object"},
         },
     }
@@ -157,9 +187,64 @@ def test_validate_release_rejects_noncanonical_chart_repo(tmp_path: Path) -> Non
 def test_initial_summary_contains_component_and_platform_checks(tmp_path: Path) -> None:
     summary = releasectl.build_initial_summary("v2026.06.0-rc1", registry_payload())
     assert summary["status"] == "pending"
-    assert summary["checks"]["gateway-build"]["status"] == "pending"
-    assert summary["checks"]["install-validation"]["status"] == "pending"
-    assert summary["checks"]["gateway-api-conformance"]["status"] == "pending"
+    assert summary["checks"]["gateway-build"] == {
+        "status": "pending",
+        "command": "make build",
+        "repo": "gateway",
+        "scope": "component",
+    }
+    assert summary["checks"]["install-validation"] == {
+        "status": "pending",
+        "command": "make e2e-smoke",
+        "repo": "gateway",
+        "scope": "platform",
+    }
+    assert summary["checks"]["gateway-api-conformance"] == {
+        "status": "pending",
+        "command": "make conformance",
+        "repo": "gateway",
+        "scope": "platform",
+    }
+
+
+def test_validate_release_files_backfills_check_command_evidence(tmp_path: Path) -> None:
+    registry, manifest, manifest_schema_path, summary, summary_schema_path = write_release_inputs(
+        tmp_path,
+        summary_payload={
+            "platformVersion": "v2026.06.0-rc1",
+            "status": "pending",
+            "checks": {
+                "gateway-build": {
+                    "status": "passed",
+                    "command": "stale command",
+                    "repo": "stale",
+                    "scope": "platform",
+                }
+            },
+            "artifacts": {},
+        },
+    )
+
+    _, _, rendered_summary = releasectl.validate_release_files(
+        registry,
+        manifest,
+        manifest_schema_path,
+        summary,
+        summary_schema_path,
+    )
+
+    assert rendered_summary["checks"]["gateway-build"] == {
+        "status": "passed",
+        "command": "make build",
+        "repo": "gateway",
+        "scope": "component",
+    }
+    assert rendered_summary["checks"]["dataplane-build"] == {
+        "status": "pending",
+        "command": "cargo build --workspace",
+        "repo": "dataplane",
+        "scope": "component",
+    }
 
 
 def test_render_results_creates_human_readable_reports(tmp_path: Path) -> None:
@@ -167,8 +252,18 @@ def test_render_results_creates_human_readable_reports(tmp_path: Path) -> None:
         "platformVersion": "v2026.06.0-rc1",
         "status": "passed",
         "checks": {
-            "gateway-build": {"status": "passed"},
-            "gateway-api-conformance": {"status": "passed"},
+            "gateway-build": {
+                "status": "passed",
+                "command": "make build",
+                "repo": "gateway",
+                "scope": "component",
+            },
+            "gateway-api-conformance": {
+                "status": "passed",
+                "command": "make conformance",
+                "repo": "gateway",
+                "scope": "platform",
+            },
         },
         "artifacts": {
             "githubRun": "https://github.com/nantian-gw/platform-release/actions/runs/123456789",
@@ -182,10 +277,45 @@ def test_render_results_creates_human_readable_reports(tmp_path: Path) -> None:
 
     releasectl.render_results(summary_path, matrix_path, conformance_path, artifacts_path)
 
-    assert "| gateway-build | passed |" in matrix_path.read_text(encoding="utf-8")
+    matrix = matrix_path.read_text(encoding="utf-8")
+    assert "| Check | Status | Scope | Repo | Command |" in matrix
+    assert "| gateway-build | passed | component | gateway | `make build` |" in matrix
+    assert "| gateway-api-conformance | passed | platform | gateway | `make conformance` |" in matrix
     assert "Gateway API conformance status: passed" in conformance_path.read_text(encoding="utf-8")
     artifact_index = yaml.safe_load(artifacts_path.read_text(encoding="utf-8"))
     assert artifact_index["githubRun"].endswith("/123456789")
+
+
+def test_summary_schema_accepts_status_only_and_command_evidence_checks() -> None:
+    schema = releasectl.load_schema(
+        Path(__file__).resolve().parents[1] / "schemas/summary.schema.json"
+    )
+
+    releasectl.jsonschema.validate(
+        {
+            "platformVersion": "v2026.06.0-rc1",
+            "status": "pending",
+            "checks": {"gateway-build": {"status": "pending"}},
+            "artifacts": {},
+        },
+        schema,
+    )
+    releasectl.jsonschema.validate(
+        {
+            "platformVersion": "v2026.06.0-rc1",
+            "status": "passed",
+            "checks": {
+                "gateway-build": {
+                    "status": "passed",
+                    "command": "make build",
+                    "repo": "gateway",
+                    "scope": "component",
+                }
+            },
+            "artifacts": {},
+        },
+        schema,
+    )
 
 
 def test_promote_release_requires_passed_summary(tmp_path: Path) -> None:
@@ -226,11 +356,41 @@ def test_run_validation_marks_active_failure_and_skips_later_checks(tmp_path: Pa
 
     rendered_summary = releasectl.load_yaml(summary)
     assert rendered_summary["status"] == "failed"
-    assert rendered_summary["checks"]["gateway-build"]["status"] == "passed"
-    assert rendered_summary["checks"]["gateway-test"]["status"] == "failed"
-    assert rendered_summary["checks"]["dataplane-build"]["status"] == "skipped-after-failure"
-    assert rendered_summary["checks"]["install-validation"]["status"] == "skipped-after-failure"
-    assert rendered_summary["checks"]["gateway-api-conformance"]["status"] == "skipped-after-failure"
+    assert_check_evidence(
+        rendered_summary["checks"]["gateway-build"],
+        status="passed",
+        command="make build",
+        repo="gateway",
+        scope="component",
+    )
+    assert_check_evidence(
+        rendered_summary["checks"]["gateway-test"],
+        status="failed",
+        command="make test",
+        repo="gateway",
+        scope="component",
+    )
+    assert_check_evidence(
+        rendered_summary["checks"]["dataplane-build"],
+        status="skipped-after-failure",
+        command="cargo build --workspace",
+        repo="dataplane",
+        scope="component",
+    )
+    assert_check_evidence(
+        rendered_summary["checks"]["install-validation"],
+        status="skipped-after-failure",
+        command="make e2e-smoke",
+        repo="gateway",
+        scope="platform",
+    )
+    assert_check_evidence(
+        rendered_summary["checks"]["gateway-api-conformance"],
+        status="skipped-after-failure",
+        command="make conformance",
+        repo="gateway",
+        scope="platform",
+    )
     assert rendered_summary["artifacts"]["failure"] == "command failed with exit code 2"
 
 
@@ -257,11 +417,41 @@ def test_run_validation_checkout_failure_does_not_claim_a_validation_check_faile
 
     rendered_summary = releasectl.load_yaml(summary)
     assert rendered_summary["status"] == "failed"
-    assert rendered_summary["checks"]["gateway-build"]["status"] == "skipped-after-failure"
-    assert rendered_summary["checks"]["gateway-test"]["status"] == "skipped-after-failure"
-    assert rendered_summary["checks"]["dataplane-build"]["status"] == "skipped-after-failure"
-    assert rendered_summary["checks"]["install-validation"]["status"] == "skipped-after-failure"
-    assert rendered_summary["checks"]["gateway-api-conformance"]["status"] == "skipped-after-failure"
+    assert_check_evidence(
+        rendered_summary["checks"]["gateway-build"],
+        status="skipped-after-failure",
+        command="make build",
+        repo="gateway",
+        scope="component",
+    )
+    assert_check_evidence(
+        rendered_summary["checks"]["gateway-test"],
+        status="skipped-after-failure",
+        command="make test",
+        repo="gateway",
+        scope="component",
+    )
+    assert_check_evidence(
+        rendered_summary["checks"]["dataplane-build"],
+        status="skipped-after-failure",
+        command="cargo build --workspace",
+        repo="dataplane",
+        scope="component",
+    )
+    assert_check_evidence(
+        rendered_summary["checks"]["install-validation"],
+        status="skipped-after-failure",
+        command="make e2e-smoke",
+        repo="gateway",
+        scope="platform",
+    )
+    assert_check_evidence(
+        rendered_summary["checks"]["gateway-api-conformance"],
+        status="skipped-after-failure",
+        command="make conformance",
+        repo="gateway",
+        scope="platform",
+    )
     assert rendered_summary["artifacts"]["failure"] == "command failed with exit code 128"
 
 
@@ -301,11 +491,41 @@ def test_run_validation_success_marks_component_and_platform_checks_passed(
 
     rendered_summary = releasectl.load_yaml(summary)
     assert rendered_summary["status"] == "passed"
-    assert rendered_summary["checks"]["gateway-build"]["status"] == "passed"
-    assert rendered_summary["checks"]["gateway-test"]["status"] == "passed"
-    assert rendered_summary["checks"]["dataplane-build"]["status"] == "passed"
-    assert rendered_summary["checks"]["install-validation"]["status"] == "passed"
-    assert rendered_summary["checks"]["gateway-api-conformance"]["status"] == "passed"
+    assert_check_evidence(
+        rendered_summary["checks"]["gateway-build"],
+        status="passed",
+        command="make build",
+        repo="gateway",
+        scope="component",
+    )
+    assert_check_evidence(
+        rendered_summary["checks"]["gateway-test"],
+        status="passed",
+        command="make test",
+        repo="gateway",
+        scope="component",
+    )
+    assert_check_evidence(
+        rendered_summary["checks"]["dataplane-build"],
+        status="passed",
+        command="cargo build --workspace",
+        repo="dataplane",
+        scope="component",
+    )
+    assert_check_evidence(
+        rendered_summary["checks"]["install-validation"],
+        status="passed",
+        command="make e2e-smoke",
+        repo="gateway",
+        scope="platform",
+    )
+    assert_check_evidence(
+        rendered_summary["checks"]["gateway-api-conformance"],
+        status="passed",
+        command="make conformance",
+        repo="gateway",
+        scope="platform",
+    )
     assert rendered_summary["artifacts"]["githubRun"] == (
         "https://github.com/nantian-gw/platform-release/actions/runs/123456789"
     )

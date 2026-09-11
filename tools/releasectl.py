@@ -41,13 +41,34 @@ def load_schema(path: Path) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
+def validation_check_metadata(registry: dict) -> dict[str, dict[str, str]]:
+    checks: dict[str, dict[str, str]] = {}
+    for name, component in registry["components"].items():
+        for check in component["validate"]:
+            checks[check["id"]] = {
+                "command": check["run"],
+                "repo": name,
+                "scope": "component",
+            }
+    for check in registry.get("platformChecks", []):
+        checks[check["id"]] = {
+            "command": check["run"],
+            "repo": check["repo"],
+            "scope": "platform",
+        }
+    return checks
+
+
+def apply_validation_check_metadata(summary: dict, registry: dict) -> None:
+    for check_id, metadata in validation_check_metadata(registry).items():
+        state = summary["checks"].setdefault(check_id, {"status": "pending"})
+        state.update(metadata)
+
+
 def build_initial_summary(platform_version: str, registry: dict) -> dict:
     checks: dict[str, dict[str, str]] = {}
-    for component in registry["components"].values():
-        for check in component["validate"]:
-            checks[check["id"]] = {"status": "pending"}
-    for check in registry.get("platformChecks", []):
-        checks[check["id"]] = {"status": "pending"}
+    for check_id, metadata in validation_check_metadata(registry).items():
+        checks[check_id] = {"status": "pending", **metadata}
     return {
         "platformVersion": platform_version,
         "status": "pending",
@@ -84,11 +105,7 @@ def validate_release_files(
     if manifest["platformVersion"] != summary["platformVersion"]:
         raise ValueError("summary platformVersion must match the manifest")
 
-    for component in registered.values():
-        for check in component["validate"]:
-            summary["checks"].setdefault(check["id"], {"status": "pending"})
-    for check in registry.get("platformChecks", []):
-        summary["checks"].setdefault(check["id"], {"status": "pending"})
+    apply_validation_check_metadata(summary, registry)
 
     return registry, manifest, summary
 
@@ -236,11 +253,17 @@ def render_results(summary_path: Path, matrix_path: Path, conformance_path: Path
         "",
         f"Overall status: `{summary['status']}`",
         "",
-        "| Check | Status |",
-        "| --- | --- |",
+        "| Check | Status | Scope | Repo | Command |",
+        "| --- | --- | --- | --- | --- |",
     ]
     for name, payload in summary["checks"].items():
-        matrix_lines.append(f"| {name} | {payload['status']} |")
+        scope = markdown_table_cell(payload.get("scope", ""))
+        repo = markdown_table_cell(payload.get("repo", ""))
+        command = markdown_table_cell(payload.get("command", ""))
+        command_cell = f"`{command}`" if command else ""
+        matrix_lines.append(
+            f"| {name} | {payload['status']} | {scope} | {repo} | {command_cell} |"
+        )
     matrix_path.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_text(matrix_path, "\n".join(matrix_lines) + "\n")
 
@@ -259,6 +282,10 @@ def render_results(summary_path: Path, matrix_path: Path, conformance_path: Path
         "failure": summary.get("artifacts", {}).get("failure", ""),
     }
     dump_yaml(artifacts_path, artifacts_index)
+
+
+def markdown_table_cell(value: object) -> str:
+    return str(value).replace("\n", " ").replace("|", "\\|")
 
 
 def promote_release(repo_root: Path, candidate_version: str, final_version: str) -> None:

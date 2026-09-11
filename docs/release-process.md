@@ -72,7 +72,8 @@ This calls `tools/releasectl.py run-validation`, which:
 - clones each managed repository at the exact commit recorded in the manifest
 - runs the component validation commands from `components/components.yaml`
 - runs the platform checks after component checks pass
-- writes the final machine-readable verdict to `summary.yaml`
+- writes the final machine-readable verdict to `summary.yaml`, including the
+  exact command, scope, and checkout key for every registered check
 
 If one check fails, the failing check is marked `failed` and later pending
 checks become `skipped-after-failure`.
@@ -91,7 +92,8 @@ After validation, render the Markdown outputs and artifact index:
 
 This produces:
 
-- `test-matrix.md` with one row per check
+- `test-matrix.md` with one row per check, including the command and checkout
+  key used for auditability
 - `conformance.md` with the Gateway API conformance status
 - `artifacts.yaml` with the GitHub Actions run URL and failure summary, when
   available
