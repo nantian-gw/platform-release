@@ -1,0 +1,176 @@
+{
+  "tool": "vegeta",
+  "target": "Data Plane via Gateway (expanded multi-scenario fixed-rate + saturation)",
+  "methodology": "10 fixed-rate scenarios (15s warmup + 60s measurement each) covering path routing, query strings, header matches, request/response header filters, URL rewrite, and request body proxying + 1 saturation scenario (no rate limit, 50 workers, 15s warmup + 60s measurement). saturation_throughput_rps is the max throughput from the saturation run.",
+  "duration_sec": 825,
+  "total_requests": 794132,
+  "success_rate": 1,
+  "cpu": {
+    "avg_m": 244.9090909090909,
+    "max_m": 467
+  },
+  "memory": {
+    "avg_mi": 92.9090909090909,
+    "max_mi": 96
+  },
+  "scenarios": [
+  {
+    "scenario": "simple",
+    "rate": 3000,
+    "requests": 164132,
+    "success": 1,
+    "p50": 10,
+    "p95": 18,
+    "p99": 23,
+    "max": 71,
+    "mean": 10,
+    "status_codes": {
+      "200": 164132
+    }
+  },
+  {
+    "scenario": "path-users",
+    "rate": 2000,
+    "requests": 120000,
+    "success": 1,
+    "p50": 3,
+    "p95": 9,
+    "p99": 15,
+    "max": 63,
+    "mean": 4,
+    "status_codes": {
+      "200": 120000
+    }
+  },
+  {
+    "scenario": "path-orders",
+    "rate": 2000,
+    "requests": 120000,
+    "success": 1,
+    "p50": 3,
+    "p95": 10,
+    "p99": 17,
+    "max": 67,
+    "mean": 4,
+    "status_codes": {
+      "200": 120000
+    }
+  },
+  {
+    "scenario": "header-data",
+    "rate": 1000,
+    "requests": 60000,
+    "success": 1,
+    "p50": 0,
+    "p95": 1,
+    "p99": 3,
+    "max": 101,
+    "mean": 1,
+    "status_codes": {
+      "200": 60000
+    }
+  },
+  {
+    "scenario": "query-search",
+    "rate": 1000,
+    "requests": 60000,
+    "success": 1,
+    "p50": 0,
+    "p95": 1,
+    "p99": 3,
+    "max": 64,
+    "mean": 1,
+    "status_codes": {
+      "200": 60000
+    }
+  },
+  {
+    "scenario": "header-match",
+    "rate": 1000,
+    "requests": 60000,
+    "success": 1,
+    "p50": 0,
+    "p95": 1,
+    "p99": 3,
+    "max": 81,
+    "mean": 1,
+    "status_codes": {
+      "200": 60000
+    }
+  },
+  {
+    "scenario": "request-header-filter",
+    "rate": 1000,
+    "requests": 60000,
+    "success": 1,
+    "p50": 0,
+    "p95": 1,
+    "p99": 3,
+    "max": 56,
+    "mean": 1,
+    "status_codes": {
+      "200": 60000
+    }
+  },
+  {
+    "scenario": "response-header-filter",
+    "rate": 1000,
+    "requests": 60000,
+    "success": 1,
+    "p50": 0,
+    "p95": 1,
+    "p99": 3,
+    "max": 62,
+    "mean": 1,
+    "status_codes": {
+      "200": 60000
+    }
+  },
+  {
+    "scenario": "rewrite-prefix",
+    "rate": 1000,
+    "requests": 60000,
+    "success": 1,
+    "p50": 0,
+    "p95": 1,
+    "p99": 3,
+    "max": 99,
+    "mean": 1,
+    "status_codes": {
+      "200": 60000
+    }
+  },
+  {
+    "scenario": "post-body",
+    "rate": 500,
+    "requests": 30000,
+    "success": 1,
+    "p50": 1,
+    "p95": 1,
+    "p99": 2,
+    "max": 37,
+    "mean": 1,
+    "status_codes": {
+      "200": 30000
+    }
+  }
+],
+  "saturation": {"requests":3000,"success":1,"throughput_rps":50.015,"p50":1,"p95":1,"p99":2,"max":12,"mean":1,"status_codes":{"200":3000}},
+  "saturation_throughput_rps": 50.015,
+  "cpu_mem_samples": [{"minute":0,"source":"kubelet-summary","pod":"nantian-gw-dataplane-7688d55b48-m4vnq","cpu_m":467,"mem_mi":95},
+{"minute":1,"source":"kubelet-summary","pod":"nantian-gw-dataplane-7688d55b48-m4vnq","cpu_m":398,"mem_mi":94},
+{"minute":2,"source":"kubelet-summary","pod":"nantian-gw-dataplane-7688d55b48-m4vnq","cpu_m":397,"mem_mi":96},
+{"minute":3,"source":"kubelet-summary","pod":"nantian-gw-dataplane-7688d55b48-m4vnq","cpu_m":217,"mem_mi":93},
+{"minute":4,"source":"kubelet-summary","pod":"nantian-gw-dataplane-7688d55b48-m4vnq","cpu_m":217,"mem_mi":92},
+{"minute":5,"source":"kubelet-summary","pod":"nantian-gw-dataplane-7688d55b48-m4vnq","cpu_m":214,"mem_mi":92},
+{"minute":6,"source":"kubelet-summary","pod":"nantian-gw-dataplane-7688d55b48-m4vnq","cpu_m":212,"mem_mi":92},
+{"minute":7,"source":"kubelet-summary","pod":"nantian-gw-dataplane-7688d55b48-m4vnq","cpu_m":219,"mem_mi":92},
+{"minute":8,"source":"kubelet-summary","pod":"nantian-gw-dataplane-7688d55b48-m4vnq","cpu_m":219,"mem_mi":92},
+{"minute":9,"source":"kubelet-summary","pod":"nantian-gw-dataplane-7688d55b48-m4vnq","cpu_m":119,"mem_mi":92},
+{"minute":10,"source":"kubelet-summary","pod":"nantian-gw-dataplane-7688d55b48-m4vnq","cpu_m":15,"mem_mi":92}],
+  "images": {
+    "control_plane": "ghcr.io/nantian-gw/nantian-controlplane:ci-9612e28268fa63b5641f0a0a7bc34c944f4eadbe",
+    "data_plane": "ghcr.io/nantian-gw/dataplane:sha-29beb12-amd64",
+    "dashboard": "ghcr.io/nantian-gw/dashboard@sha256:f913109dd5c964a48877de15797e1a2e9f08008e978c5ede53fc2ca9be8c601a"
+  }
+}
