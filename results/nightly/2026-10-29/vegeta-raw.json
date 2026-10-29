@@ -1,0 +1,10 @@
+{"scenario":"simple","rate":3000,"requests":179995,"success":1,"p50":3,"p95":10,"p99":14,"max":43,"mean":4,"status_codes":{"200":179995}}
+{"scenario":"path-users","rate":2000,"requests":119999,"success":1,"p50":1,"p95":5,"p99":11,"max":56,"mean":2,"status_codes":{"200":119999}}
+{"scenario":"path-orders","rate":2000,"requests":120000,"success":1,"p50":1,"p95":2,"p99":5,"max":55,"mean":1,"status_codes":{"200":120000}}
+{"scenario":"header-data","rate":1000,"requests":60000,"success":1,"p50":0,"p95":1,"p99":2,"max":16,"mean":0,"status_codes":{"200":60000}}
+{"scenario":"query-search","rate":1000,"requests":60000,"success":1,"p50":0,"p95":1,"p99":2,"max":40,"mean":0,"status_codes":{"200":60000}}
+{"scenario":"header-match","rate":1000,"requests":60000,"success":1,"p50":0,"p95":1,"p99":2,"max":80,"mean":0,"status_codes":{"200":60000}}
+{"scenario":"request-header-filter","rate":1000,"requests":60000,"success":1,"p50":0,"p95":1,"p99":2,"max":66,"mean":0,"status_codes":{"200":60000}}
+{"scenario":"response-header-filter","rate":1000,"requests":60000,"success":1,"p50":0,"p95":1,"p99":2,"max":70,"mean":0,"status_codes":{"200":60000}}
+{"scenario":"rewrite-prefix","rate":1000,"requests":60000,"success":1,"p50":0,"p95":1,"p99":2,"max":58,"mean":0,"status_codes":{"200":60000}}
+{"scenario":"post-body","rate":500,"requests":30000,"success":1,"p50":0,"p95":1,"p99":1,"max":65,"mean":0,"status_codes":{"200":30000}}
